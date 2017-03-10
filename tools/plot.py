@@ -134,11 +134,11 @@ if __name__ == '__main__' :
     y = np.load(args.file)
     y = y[y.keys()[0]]
     # this if is to try to save a mistake into a th.function
-    if y.ndim == 6 and (arg == '-cm' or arg == '-s'):
+    if y.ndim == 6 and (args.ffmpeg or args.sample):
         y = y[0]
+    # sketchy but it probably means it was normalized between -1 and 1
     if np.min(y) < -0.9 :
         print "renormalizing from 0 to 1"
-        # probably these were normalized -1 to 1
         y += 1.
         y /= 2.
     print y.shape
