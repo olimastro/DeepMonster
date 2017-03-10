@@ -1,6 +1,11 @@
 import numpy as np
 import inspect, os, re, shutil, sys
 
+import theano
+import theano.tensor as T
+
+rng_np = np.random.RandomState(4321)
+
 
 def infer_odim_conv(i, k, s):
     return (i-k) // s + 1
@@ -30,7 +35,7 @@ def arguments(args_to_pop=None) :
     return args, posargs
 
 
-# This is useless with new extension
+# useless with new extensions
 def parse_experiments(exp_root_path, save_old=False, enforce_new_name=None, prepare_files=True) :
     script_name = sys.argv[0].split('.py')[0]
     name = script_name if enforce_new_name is None else enforce_new_name
@@ -64,6 +69,11 @@ def parse_experiments(exp_root_path, save_old=False, enforce_new_name=None, prep
         os.system(cmd)
 
     return exp_full_path, name
+
+
+def prefix_vars_list(varlist, prefix):
+    prefix = prefix + '_'
+    return [prefix + var.name for var in varlist]
 
 
 def sort_by_numbers_in_file_name(list_of_file_names):

@@ -1,7 +1,8 @@
+import fuel.datasets
 from fuel.schemes import SequentialScheme, ShuffledScheme
 from fuel.streams import DataStream
 
-from rali.transformer import InsertLabeledExamples, CopyBatch, Normalize_min1_1
+from transformer import InsertLabeledExamples, CopyBatch, Normalize_min1_1
 
 
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
@@ -10,6 +11,7 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
         'mnist' : get_mnist,
         'cifar10' : get_cifar10,
         'svhn' : get_svhn,
+        'celeba' : get_celeba,
     }
 
     Scheme = {
@@ -19,7 +21,7 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
     }
 
     assert normalization in ['01','-1+1']
-    assert dataset in ['mnist','cifar10','svhn']
+    assert dataset in ['mnist','cifar10','svhn','celeba']
     assert len(split) == 1
 
     dataset = get_dataset[dataset](split, sources, load_in_memory)
@@ -65,6 +67,11 @@ def get_cifar10(split, sources, load_in_memory):
 def get_svhn(split, sources, load_in_memory):
     from fuel.datasets import SVHN
     return SVHN(2, split, sources=sources, load_in_memory=load_in_memory)
+
+
+def get_celeba(split, sources, load_in_memory):
+    from fuel.datasets import CelebA
+    return CelebA('64', split, sources=sources, load_in_memory=load_in_memory)
 
 
 # ssl

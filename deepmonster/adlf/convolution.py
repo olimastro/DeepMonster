@@ -2,12 +2,10 @@ import numpy as np
 import theano
 import theano.tensor as T
 import theano.tensor.nnet as nnet # for new backend
-from theano.tensor.nnet.abstract_conv import AbstractConv2d_gradInputs
+from theano.tensor.nnet.abstract_conv import AbstractConv2d_gradInputs, bilinear_upsampling
 
 import utils
 from baselayers import Layer
-from rali.utils import bn
-
 
 
 class ConvLayer(Layer) :
@@ -141,6 +139,24 @@ class DeConvLayer(ConvLayer) :
         return AbstractConv2d_gradInputs(
             imshp=imshp, kshp=kshp, border_mode=border_mode,
             subsample=strides)(W, input_, self._get_outdim()[1:])
+
+
+
+class BilinearUpsampling(Layer):
+    def __init__(self, ratio, use_1D_kernel=True, **kwargs):
+        super(BilinearUpsampling, self).__init__(**kwargs)
+        self.ratio = ratio
+        self.use_1D_kernel = use_1D_kernel
+
+    def set_io_dims(self, tup):
+        self.input_dim = tup
+        output_inner_dims = tuple(d * self.ratio for d in self.input_dim[-2:])
+        self.output_dim = self.input_dim[:-2] + output_inner_dims
+        print "setting output dims", self.output_dim
+
+    def fprop(self, x):
+        return bilinear_upsampling(x, ratio=self.ratio,
+                                   use_1D_kernel=self.use_1D_kernel)
 
 
 # Utilities classes to enable convlayers on a 5D tensors by surrounding their

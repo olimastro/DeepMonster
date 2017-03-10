@@ -1,5 +1,6 @@
 import numpy as np
-from rali.utils import rng_np
+
+rng_np = np.random.RandomState(4321)
 
 
 def norm_weight_tensor(shape):

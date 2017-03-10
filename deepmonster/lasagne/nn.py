@@ -14,7 +14,7 @@ import lasagne
 from lasagne.layers import dnn, ElemwiseSumLayer, NonlinearityLayer
 from lasagne.init import Normal, Constant
 
-from rali.utils import parse_tuple
+from deepmonster.adlf.utils import parse_tuple
 
 # T.nnet.relu has some stability issues, this is better
 def relu(x):
@@ -314,12 +314,12 @@ class DenseLayer(lasagne.layers.Layer):
 
 # comes from Ishamel code base
 def conv_layer(input_, filter_size, num_filters, stride, pad, nonlinearity=relu, W=Normal(0.02), **kwargs):
-    return dnn.Conv2DDNNLayer(input_,
-                              num_filters=num_filters,
-                              stride=parse_tuple(stride),
-                              filter_size=parse_tuple(filter_size),
-                              pad=pad,
-                              W=W, nonlinearity=nonlinearity, **kwargs)
+    return layers.conv.Conv2DDNNLayer(input_,
+                                      num_filters=num_filters,
+                                      stride=parse_tuple(stride),
+                                      filter_size=parse_tuple(filter_size),
+                                      pad=pad,
+                                      W=W, nonlinearity=nonlinearity, **kwargs)
 
 
 class BilinearUpsampling(lasagne.layers.Layer):

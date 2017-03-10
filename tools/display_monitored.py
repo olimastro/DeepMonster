@@ -1,6 +1,4 @@
 import cPickle as pkl
-import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pylab as plt
 
 from collections import OrderedDict
@@ -12,7 +10,6 @@ def display(pklfile, request=['train_data_accuracy', 'train_sample_accuracy']) :
 
     plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
                ncol=len(request), mode="expand", borderaxespad=0.)
- #   plt.savefig('/u/sygnowsj/figure.png')
     plt.show()
 
 
@@ -40,7 +37,6 @@ def parse_requests(path) :
     for i in range(figures) :
         plt.figure(i)
         display(odict, request[i])
-    plt.show()
 
 
 if __name__ == '__main__' :
