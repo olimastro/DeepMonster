@@ -133,8 +133,9 @@ if __name__ == '__main__' :
     # they have been saved with savez
     y = np.load(args.file)
     y = y[y.keys()[0]]
-    # this if is to try to save a mistake into a th.function
-    if y.ndim == 6 and (args.ffmpeg or args.sample):
+    # this happens if you forgot to [0] at the output of theano.function, so you took the list
+    # and numpy made a new useless axis
+    if y.shape[0] == 1 and (args.ffmpeg or args.sample):
         y = y[0]
     # sketchy but it probably means it was normalized between -1 and 1
     if np.min(y) < -0.9 :

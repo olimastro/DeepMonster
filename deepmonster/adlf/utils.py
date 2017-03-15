@@ -6,6 +6,9 @@ import theano.tensor as T
 
 rng_np = np.random.RandomState(4321)
 
+def getftensor5():
+    return T.TensorType('float32', (False,)*5)
+
 
 def infer_odim_conv(i, k, s):
     return (i-k) // s + 1

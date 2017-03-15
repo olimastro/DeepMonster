@@ -2,9 +2,32 @@ import theano
 from theano import tensor
 
 from blocks.algorithms import Adam as BlocksAdam
+from blocks.algorithms import BasicRMSProp as _BasicRMSProp
+from blocks.algorithms import RMSProp as _RMSProp
+from blocks.algorithms import Scale
 from blocks.roles import add_role, ALGORITHM_HYPERPARAMETER, ALGORITHM_BUFFER
 from blocks.utils import shared_floatx_zeros_matching, shared_floatx
 
+def insert_update_names(name, updates):
+    for i, tup in enumerate(updates):
+        tup[0].name = 'OPT_{}_upd{}'.format(name, i)
+
+
+class BasicRMSProp(_BasicRMSProp):
+    def compute_step(self, parameter, previous_step):
+        step, updates = super(BasicRMSProp, self).compute_step(parameter, previous_step)
+        insert_update_names(parameter.name, updates)
+        return step, updates
+
+
+class RMSProp(_RMSProp):
+    def __init__(self, learning_rate=1.0, decay_rate=0.9, max_scaling=1e5):
+        basic_rms_prop = BasicRMSProp(decay_rate=decay_rate,
+                                      max_scaling=max_scaling)
+        scale = Scale(learning_rate=learning_rate)
+        self.learning_rate = scale.learning_rate
+        self.decay_rate = basic_rms_prop.decay_rate
+        self.components = [basic_rms_prop, scale]
 
 
 class Adam(BlocksAdam):

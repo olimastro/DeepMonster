@@ -5,6 +5,86 @@ from fuel.schemes import SequentialScheme, ShuffledScheme
 from random import shuffle
 
 
+class UpsampleToShape(Transformer):
+    def __init__(self, shape, *args, **kwargs):
+        kwargs.setdefault('produces_examples', False)
+        super(UpsampleToShape, self).__init__(*args, **kwargs)
+        self.outshp = shape
+
+    def transform_batch(self, batch):
+        data = batch[0]
+        inshp = data.shape[-2:]
+
+        n = 0 ; shp = inshp
+        while shp < self.outshp:
+            n += 1
+            shp = shp*(2**n)
+
+        for i in range(n+1).reverse():
+            if i == 0:
+                #crop time
+                data = self.crop(data)
+            elif i == 1:
+                # bilinear time
+                data = self.bilinear_upsampling(data)
+            else:
+                # gk time
+                data = self.gaussiankernel_upsampling(data)
+
+        return [data]+list(batch[1:])
+
+
+    def crop(self, data):
+        # bc01
+        new_data = np.empty(data.shape[:3] + self.outshp, dtype=np.float32)
+
+        x = np.random.randint(data.shape[-1]-self.outshp[0])
+        y = np.random.randint(data.shape[-2]-self.outshp[1])
+        for i in range(new_data.shape[0]) :
+            new_data[i,:,:,:] = data[i,:,x:x+self.outshp[0],y:y+self.outshp[1]]
+
+        return new_data
+
+
+    def bilinear_upsampling(self, data):
+        pass
+
+    def gaussiankernel_upsampling(self, data):
+        pass
+
+
+
+class RemoveDtsetMean(Transformer):
+    """
+        Removes dataset mean from all members of the dataset. Used in vgg ( *old* no batch norm model)
+    """
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('produces_examples', False)
+        axis = kwargs.pop('axis', 1)
+        super(RemoveDtsetMean, self).__init__(*args, **kwargs)
+        mean = 0 ; i = 0.
+        tup_found = False
+        for i, data in enumerate(self.data_stream.get_epoch_iterator()):
+            if not tup_found:
+                ndim = data[0].ndim
+                tup = range(ndim)
+                tup.pop(axis)
+                tup = tuple(tup)
+                tup_found = True
+
+            mean += data[0].mean(axis=tup)
+            i += 1.
+        self.mean = mean / i
+
+
+    def transform_batch(self, batch):
+        data = batch[0]
+        # TODO: fix this so it works on any ndim of data
+        data -= self.mean[None,:,None,None]
+        return [data]+list(batch[1:])
+
+
+
 class Normalize_min1_1(Transformer):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('produces_examples', False)

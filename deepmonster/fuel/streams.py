@@ -2,11 +2,11 @@ import fuel.datasets
 from fuel.schemes import SequentialScheme, ShuffledScheme
 from fuel.streams import DataStream
 
-from transformer import InsertLabeledExamples, CopyBatch, Normalize_min1_1
+from transformers import InsertLabeledExamples, CopyBatch, Normalize_min1_1
 
 
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
-                  normalization='01', ssl={}, load_in_memory=False):
+                  normalization='01', ssl={}, load_in_memory=False, test=False):
     get_dataset = {
         'mnist' : get_mnist,
         'cifar10' : get_cifar10,
@@ -22,12 +22,18 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
 
     assert normalization in ['01','-1+1']
     assert dataset in ['mnist','cifar10','svhn','celeba']
+    #TODO: more split
     assert len(split) == 1
 
     dataset = get_dataset[dataset](split, sources, load_in_memory)
-    scheme = Scheme[split[0]]((dataset.num_examples // batch_size) * batch_size,
-                              batch_size)
+    if test:
+        print "WARNING: Test flag at create_stream, loading stream with one batch_size"
+        num_examples = batch_size
+    else:
+        num_examples = (dataset.num_examples // batch_size) * batch_size
+    scheme = Scheme[split[0]](num_examples, batch_size)
 
+    # this is a bit sloppy, cant assume that the default is a 01 normalization (so far it is)
     if normalization is '01':
         stream = DataStream.default_stream(
             dataset=dataset,
@@ -74,7 +80,7 @@ def get_celeba(split, sources, load_in_memory):
     return CelebA('64', split, sources=sources, load_in_memory=load_in_memory)
 
 
-# ssl
+# TODO: ssl
 """
 train_dataset = CIFAR10(('train',), sources=('features','targets',), subset=slice(0, 45000))
 valid_dataset = CIFAR10(('train',), sources=('features','targets',), subset=slice(45000, 50000))
