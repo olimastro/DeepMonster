@@ -69,9 +69,9 @@ class Tanh(Activation) :
         return T.tanh(input_)
 
 
-class HardTang(Activation):
+class HardTanh(Activation):
     def __call__(self, input_) :
-        return T.clip(x, -1., 1.)
+        return T.clip(input_, -1., 1.)
 
 
 class Identity(Activation) :

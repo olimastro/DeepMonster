@@ -84,6 +84,7 @@ class Feedforward(object):
 
 
     def initialize(self, i, layer, **kwargs):
+        #import ipdb; ipdb.set_trace()
         if i == 0 :
             if not hasattr(layer, 'input_dims'):
                 raise ValueError("The very first layer of this chain needs its input_dims!")

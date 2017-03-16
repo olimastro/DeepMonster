@@ -372,7 +372,8 @@ class RecurrentLayer(AbsLayer):
             y = self.scanlayer.after_scan(almosty)
 
         elif mode == 'scan':
-            h = h.reshape((x.shape[0], x.shape[1],)+self.scanlayer.input_dims)
+            tup = (h.shape[-1],) if x.ndim == 3 else (h.shape[-3],h.shape[-2],h.shape[-1])
+            h = h.reshape((x.shape[0], x.shape[1],)+tup)
             y = self.scanlayer.apply(h)
 
         return y

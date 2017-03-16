@@ -5,9 +5,10 @@ from baselayers import AbsLayer
 
 
 class Reshape(AbsLayer):
-    def __init__(self, shape):
+    def __init__(self, shape, **kwargs):
         # use None in shape to use an unknown in advance input shape
         self.shape = shape
+        super(Reshape, self).__init__(**kwargs)
 
 
     def set_io_dims(self, tup):

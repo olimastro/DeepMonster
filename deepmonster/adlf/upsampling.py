@@ -15,10 +15,10 @@ class BilinearUpsampling(AbsLayer):
         self.use_1D_kernel = use_1D_kernel
 
     def set_io_dims(self, tup):
-        self.input_dim = tup
-        output_inner_dims = tuple(d * self.ratio for d in self.input_dim[-2:])
-        self.output_dim = self.input_dim[:-2] + output_inner_dims
-        #print "setting output dims", self.output_dim
+        self.input_dims = tup
+        output_inner_dims = tuple(d * self.ratio for d in self.input_dims[-2:])
+        self.output_dims = self.input_dims[:-2] + output_inner_dims
+        #print "setting output dims", self.output_dims
 
     def fprop(self, x):
         return bilinear_upsampling(x, ratio=self.ratio,
@@ -48,9 +48,9 @@ class GaussianKernelUpsampling(AbsLayer):
         super(GaussianKernelUpsampling, self).__init__(**kwargs)
 
     def set_io_dims(self,tup):
-        self.input_dim = tup
-        output_inner_dims = tuple(d * self.ratio for d in self.input_dim[-2:])
-        self.output_dim = self.input_dim[:-2] + output_inner_dims
+        self.input_dims = tup
+        output_inner_dims = tuple(d * self.ratio for d in self.input_dims[-2:])
+        self.output_dims = self.input_dims[:-2] + output_inner_dims
 
     def fprop(self, x):
         # first fill zeros between each pixels

@@ -172,7 +172,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
     def param_dict_initialization(self):
         dict_of_init = {
-            'U' : [(4*self.output_dims[0], self.input_dims[0]), 'orth', 0.1],
+            'U' : [(4*self.output_dims[0], self.input_dims[0]), 'orth', 0.2],
             'xh_betas' : [(4*self.output_dims[0],), 'zeros'],
             'h0' : [(self.output_dims[0],), 'zeros'],
             'c0' : [(self.output_dims[0],), 'zeros'],
@@ -189,7 +189,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
 
     def op(self, h, U):
-        preact = T.dot(h.flatten(2), U.flatten(2).dimshuffle(1,0))[:,:,None,None]
+        preact = T.dot(h.flatten(2), U.flatten(2).dimshuffle(1,0))
         return preact
 
 
@@ -199,12 +199,16 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
              x_gammas=None, h_gammas=None,
              c_gammas=None, c_betas=None):
         deterministic = self.deterministic
+        if x_.ndim == 4 and h_.ndim == 2:
+            x_ = x_.flatten(2)
 
         def _slice(_x, n, dim):
             if _x.ndim == 4:
                 return _x[:, n*dim:(n+1)*dim, :, :]
             elif _x.ndim == 3:
                 return _x[n*dim:(n+1)*dim, :, :]
+            elif _x.ndim == 2:
+                return _x[:,n*dim:(n+1)*dim]
 
         #from theano.tests.breakpoint import PdbBreakpoint
         #bp = PdbBreakpoint('test')
@@ -217,7 +221,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
             h_normal = self.bn(preact, 0, h_gammas, '_h', deterministic)
             preact = x_normal + h_normal
         else :
-            xh_betas = xh_betas.dimshuffle('x',0,'x','x')
+            xh_betas = xh_betas.dimshuffle('x',0) + ('x',) * (preact.ndim-2)
             preact = x_ + preact
             preact = preact + xh_betas
 
@@ -275,7 +279,7 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
     def param_dict_initialization(self):
         dict_of_init = {
             'U' : [(self.num_filters*4, self.num_filters)+self.filter_size,
-                   'orth', 0.1],
+                   'orth', 0.2],
             'xh_betas' : [(4*self.num_filters,), 'zeros'],
             'h0' : [(self.num_filters,) + self.feature_size, 'zeros'],
             'c0' : [(self.num_filters,) + self.feature_size, 'zeros'],
@@ -332,19 +336,3 @@ _
             return zonedout_h, zonedout_c
         return zonedout_step
 """
-
-
-
-if __name__ == '__main__':
-    nlat = 16
-    batch_size = 32
-    theano_rng = theano.sandbox.rng_mrg.MRG_RandomStreams(seed=1234)
-    z = theano_rng.normal(size=(batch_size,nlat,1,1))
-    z.tag.test_value=np.random.random((batch_size,nlat,1,1)).astype(np.float32)
-
-    lstm = RepeatLSTM(nlat, input_size=64, weight_init='norm', scale=0.1,
-                      time_size=16)
-    lstm.initialize()
-    y = lstm.fprop(z)
-    f = theano.function([],y)
-    print f().shape

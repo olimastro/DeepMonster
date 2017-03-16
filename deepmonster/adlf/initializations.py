@@ -11,7 +11,8 @@ def orthogonal_weight_tensor(shape):
     """
     Random orthogonal matrix as done in blocks
     Orthogonal() for a 2D or 4D tensor.
-    4D case : It will return an array of orthogonal matrices
+    2D: assumes a square or rectangular matrix (will make blocks of orth for rectangular)
+    4D: assumes shape[-2:] is square and return orth matrices on these axis
     """
     if len(shape) == 2 :
         if shape[0] == shape[1] :
@@ -19,20 +20,25 @@ def orthogonal_weight_tensor(shape):
             Q, R = np.linalg.qr(M)
             Q = Q * np.sign(np.diag(R))
             return Q
-        elif shape[1] % shape[0] == 0:
-            print "WARNING: You asked for a orth initialization for a 2D tensor"+\
-                    " that is not square, but it seems possible to make it orth by blocks"
+
+        i = 0 if shape[0] > shape[1] else 1
+        if shape[i] % shape[i-1] == 0:
+            print "WARNING: You asked for a orth initialization of a 2D tensor"+\
+                    " which is not square, but it seems possible to make it orth by blocks"
             weight_tensor = np.empty(shape, dtype=np.float32)
-            blocks_of_orth = shape[1] // shape[0]
-            for i in range(blocks_of_orth):
-                M = rng_np.randn(shape[0],shape[0]).astype(np.float32)
+            blocks_of_orth = shape[i] // shape[i-1]
+            for j in range(blocks_of_orth):
+                M = rng_np.randn(shape[1-i],shape[1-i]).astype(np.float32)
                 Q, R = np.linalg.qr(M)
                 Q = Q * np.sign(np.diag(R))
-                weight_tensor[:,i*shape[0]:(i+1)*shape[0]] = Q
+                if i == 0:
+                    weight_tensor[j*shape[1]:(j+1)*shape[1],:] = Q
+                else:
+                    weight_tensor[:,j*shape[0]:(j+1)*shape[0]] = Q
             return weight_tensor
         else :
-            print "WARNING: You asked for a orth initialization for a 2D tensor"+\
-                    " that is not square and not square by block. Falling back to norm"
+            print "WARNING: You asked for a orth initialization of a 2D tensor"+\
+                    " that is not square and not square by block. Falling back to norm init."
             return norm_weight_tensor(shape)
 
     elif len(shape) == 3 :

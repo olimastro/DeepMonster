@@ -53,6 +53,15 @@ class UpsampleToShape(Transformer):
         pass
 
 
+class Float32(Transformer):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('produces_examples', False)
+        super(Float32, self).__init__(*args, **kwargs)
+
+    def transform_batch(self, batch):
+        data = batch[0].astype(np.float32)
+        return [data]+list(batch[1:])
+
 
 class RemoveDtsetMean(Transformer):
     """
@@ -84,8 +93,20 @@ class RemoveDtsetMean(Transformer):
         return [data]+list(batch[1:])
 
 
+class From01tomin11(Transformer):
+    # 01 to -1+1
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('produces_examples', False)
+        super(From01tomin11, self).__init__(*args, **kwargs)
+
+    def transform_batch(self, batch):
+        data = batch[0]
+        data = data*2. - 1.
+        return [data]+list(batch[1:])
+
 
 class Normalize_min1_1(Transformer):
+    # uint to -1+1
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('produces_examples', False)
         super(Normalize_min1_1, self).__init__(*args, **kwargs)

@@ -19,6 +19,8 @@ class ConvLayer(Layer) :
         self.tied_bias = tied_bias
         self.num_filters = num_filters
         self.strides = utils.parse_tuple(strides, 2)
+        if not isinstance(padding, str):
+            padding = utils.parse_tuple(padding, 2)
         self.padding = padding
 
         self.num_channels = num_channels
@@ -36,11 +38,16 @@ class ConvLayer(Layer) :
         s_dim = self.strides[0]
         border_mode = self.padding
         if border_mode == 'valid' :
-            o_dim = (i_dim - k_dim) // s_dim + 1
+            border_mode = 0
         elif border_mode == 'half' :
-            o_dim = i_dim
-        else :
-            o_dim = (i_dim + 2 * border_mode[0] - k_dim) // s_dim + 1
+            border_mode = k_dim // 2
+        elif border_mode == 'full':
+            border_mode = k_dim - 1
+        elif isinstance(border_mode, tuple):
+            border_mode = border_mode[0]
+        else:
+            raise TypeError("Does not recognize padding type {} in {}".format(self.padding,self.prefix))
+        o_dim = (i_dim + 2 * border_mode - k_dim) // s_dim + 1
 
         self.feature_size = (o_dim, o_dim)
 
@@ -80,11 +87,8 @@ class ConvLayer(Layer) :
         if self.tied_bias:
             return super(ConvLayer, self).apply_bias(x)
         else:
-            try:
-                pattern = ('x',) * (x.ndim - 3) + (0,1,2)
-                return x + self.betas.dimshuffle(*pattern)
-            except:
-                import ipdb; ipdb.set_trace()
+            pattern = ('x',) * (x.ndim - 3) + (0,1,2)
+            return x + self.betas.dimshuffle(*pattern)
 
 
     def apply(self, x):

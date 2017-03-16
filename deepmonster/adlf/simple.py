@@ -19,15 +19,21 @@ class FullyConnectedLayer(Layer) :
 
     def apply(self, x):
         if x.ndim == 4:
-            x = x.transpose(0,2,3,1)
+            # for a bc01 tensor, it will flatten 01 and do a dot
+            y = x.transpose(0,2,3,1)
         elif x.ndim == 2:
-            pass
+            y = x
+        elif x.ndim == 3:
+            # tbc, collapse t and b
+            y = x.reshape((x.shape[0]*x.shape[1],x.shape[2]))
         else:
             raise ValueError("Where are you going with these dimensions in a fullyconnected?")
 
-        out = T.dot(x, self.W)
+        out = T.dot(y, self.W)
         if x.ndim == 4:
             out = out.transpose(0,3,1,2)
+        elif x.ndim == 3:
+            out = out.reshape((x.shape[0],x.shape[1],out.shape[1]))
 
         return out
 

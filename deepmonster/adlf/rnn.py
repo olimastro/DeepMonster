@@ -2,18 +2,23 @@ import inspect
 
 import utils
 from baselayers import RecurrentLayer
-from scanlayers import ScanConvLSTM
 from convolution import ConvLayer, DeConvLayer
+from scanlayers import ScanConvLSTM, ScanLSTM
+from simple import FullyConnectedLayer
 
 # This file contains all the helper class for RecurrentLayer. It is possible to
 # create a custom RecurrentLayer only by using the RecurrentLayer class. All the
 # classes here are intended to add sugar and define default behaviors.
 
+#TODO: Intercept Initilization keyword properly
 
 class TypicalReccurentLayer(RecurrentLayer):
     """
         A typical rnn doesn't have two biases applications and applies batch norm
         only in the time computation phase. Add more as it goes!
+
+        Don't worry about kwargs having things like batch_norm=True, it won't conflict
+        with RecurrentLayer as this class dosen't pass kwargs to RecurrentLayer.
     """
     def __init__(self, *args, **kwargs):
         mode = kwargs.pop('mode', 'auto')
@@ -36,6 +41,28 @@ class TypicalReccurentLayer(RecurrentLayer):
             if kwargs.has_key(arg):
                 kwargs.pop(arg)
         return kwargs
+
+
+# generic LSTMs don't change dimensions in the reccurence
+class LSTM(TypicalReccurentLayer):
+    """
+        Generic LSTM class
+
+        REMINDER: Take care with those * 4
+    """
+    def __init__(self, output_dims, input_dims=None, upward=None, time=None, **kwargs):
+        output_dims = utils.parse_tuple(output_dims)
+
+        if upward is None:
+            upward = FullyConnectedLayer(output_dims=(output_dims[0]*4,)+output_dims[1:],
+                                         input_dims=input_dims, **kwargs)
+
+        # there is no kwargs proper to a fully
+        #kwargs = self.popkwargs(upward, kwargs)
+        if time is None:
+            time = ScanLSTM(output_dims=output_dims, input_dims=output_dims, **kwargs)
+
+        super(LSTM, self).__init__(upward, time, **kwargs)
 
 
 
@@ -71,7 +98,7 @@ if __name__ == '__main__':
     import theano
     import theano.tensor as T
     import numpy as np
-    from base import Feedforward
+    from network import Feedforward
     from activations import LeakyRectifier
     from initializations import Initialization, Gaussian
 
@@ -84,23 +111,20 @@ if __name__ == '__main__':
     }
 
     theano.config.compute_test_value = 'warn'
-    xnp = np.random.random((10,50,3,11,11)).astype(np.float32)
+    xnp = np.random.random((10,50,3,1,1)).astype(np.float32)
     ftensor5 = T.TensorType('float32', (False,)*5)
     x = ftensor5('x')
     x.tag.test_value = xnp
 
     layers = [
-        ConvLSTM((5,5), 16, image_size=(11,11), num_channels=3),
-        #ConvLSTM((3,3), 32),
+        LSTM(output_dims=100, input_dims=(3,1,1))
     ]
 
-    ff = Feedforward(layers, 'convlstm', **config)
+    ff = Feedforward(layers, 'lstm', **config)
     ff.initialize()
     y = ff.fprop(x)
-    cost = y[-1].mean()
-    import ipdb; ipdb.set_trace()
-    grads = T.grad(cost, ff.params)
+    #cost = y[-1].mean()
 
-    f = theano.function(inputs=[x], outputs=[cost])
+    f = theano.function(inputs=[x], outputs=[y])
     out = f(xnp)
     print out[0].shape

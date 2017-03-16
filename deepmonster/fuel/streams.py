@@ -2,7 +2,7 @@ import fuel.datasets
 from fuel.schemes import SequentialScheme, ShuffledScheme
 from fuel.streams import DataStream
 
-from transformers import InsertLabeledExamples, CopyBatch, Normalize_min1_1
+from transformers import InsertLabeledExamples, CopyBatch, Normalize_min1_1, Float32
 
 
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
@@ -20,7 +20,7 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
         'test' : SequentialScheme,
     }
 
-    assert normalization in ['01','-1+1']
+    assert normalization in [None, '01','-1+1']
     assert dataset in ['mnist','cifar10','svhn','celeba']
     #TODO: more split
     assert len(split) == 1
@@ -38,11 +38,17 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
         stream = DataStream.default_stream(
             dataset=dataset,
             iteration_scheme=scheme)
-    else:
+    elif normalization is '-1+1':
         stream = Normalize_min1_1(
             DataStream(
                 dataset=dataset,
                 iteration_scheme=scheme))
+    else:
+        stream = Float32(
+            DataStream(
+                dataset=dataset,
+                iteration_scheme=scheme))
+
 
     if len(ssl) > 0:
         raise NotImplementedError('didnt implement ssl stream fetcher')
