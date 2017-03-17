@@ -13,40 +13,42 @@ def weight_norm(layer, train_g=None):
     assert train_g in [None, False, True]
     init_g = Constant(1.)
 
-    layer.W_param = layer.W
-    Wndim = layer.W.get_value().ndim
+    try:
+        weight_tag = 'W' if hasattr(layer, 'W') else 'U'
+    except AttributeError:
+        raise AttributeError("Trying to call weight norm on {} without layer.W or layer.U defined".format(layer))
+    weights = getattr(layer, weight_tag)
+
+    Wndim = weights.get_value().ndim
     if Wndim == 4:
         W_axes_to_sum = (1,2,3)
         W_dimshuffle_args = (0,'x','x','x')
-        #else:
-        #    W_axes_to_sum = (0,2,3)
-        #    W_dimshuffle_args = ('x',0,'x','x')
+    # a bit sketch but serves our purpose for the LSTM weights
+    elif weight_tag == 'U' and Wndim == 2:
+        W_axes_to_sum = 1
+        W_dimshuffle_args = (0,'x')
     elif Wndim == 3 :
-        raise NotImplementedError
+        raise NotImplementedError("What is a weight with 3 dimensions?")
     else :
         W_axes_to_sum = 0
         W_dimshuffle_args = ('x',0)
 
-    #if len(W_dimshuffle_args) == 2:
-    #    layer.wn_axes_to_sum = (0,)
-    #else :
-    layer.wn_axes_to_sum = (0,2,3)
-    layer.wn_dimshuffle_args = ('x',0,'x','x')
-
     if train_g is not None:
-        g = init_g(layer.output_size)
+        g = init_g(layer.output_dims)
         g = theano.shared(g, name=layer.prefix+'_g')
         if train_g :
             layer.params += [g]
 
-        layer.W = layer.W_param * (
-             g / T.sqrt(1e-6 + T.sum(T.square(layer.W_param),
+        new_weights = weights * (
+             g / T.sqrt(1e-6 + T.sum(T.square(weights),
                                      axis=W_axes_to_sum))).dimshuffle(*W_dimshuffle_args)
         layer.g = g
     else:
-        layer.W = layer.W_param / \
-                T.sqrt(1e-6 + T.sum(T.square(layer.W_param),
+        new_weights = weights / \
+                T.sqrt(1e-6 + T.sum(T.square(weights),
                                     axis=W_axes_to_sum,keepdims=True))
+
+    setattr(layer, weight_tag, new_weights)
 
 
 

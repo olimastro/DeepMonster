@@ -239,7 +239,9 @@ class Layer(AbsLayer):
         return rval
 
 
+    #FIXME: the dimshuffle on the mean and var depends on their dim. Easy for 2&4D, but for a 5D or 3D tensor?
     def init_wn(self, x, init_stdv=0.1):
+        raise NotImplementedError("You can use wn for now by doing batch norm on first layer")
         m = T.mean(x, self.wn_axes_to_sum)
         x -= m.dimshuffle(*self.wn_dimshuffle_args)
         inv_stdv = init_stdv/T.sqrt(T.mean(T.square(x), self.wn_axes_to_sum))

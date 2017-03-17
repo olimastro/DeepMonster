@@ -172,7 +172,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
     def param_dict_initialization(self):
         dict_of_init = {
-            'U' : [(4*self.output_dims[0], self.input_dims[0]), 'orth', 0.2],
+            'U' : [(4*self.output_dims[0], self.input_dims[0]), 'orth', 0.1],
             'xh_betas' : [(4*self.output_dims[0],), 'zeros'],
             'h0' : [(self.output_dims[0],), 'zeros'],
             'c0' : [(self.output_dims[0],), 'zeros'],
@@ -221,7 +221,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
             h_normal = self.bn(preact, 0, h_gammas, '_h', deterministic)
             preact = x_normal + h_normal
         else :
-            xh_betas = xh_betas.dimshuffle('x',0) + ('x',) * (preact.ndim-2)
+            xh_betas = xh_betas.dimshuffle(*('x',0) + ('x',) * (preact.ndim-2))
             preact = x_ + preact
             preact = preact + xh_betas
 
@@ -279,7 +279,7 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
     def param_dict_initialization(self):
         dict_of_init = {
             'U' : [(self.num_filters*4, self.num_filters)+self.filter_size,
-                   'orth', 0.2],
+                   'orth', 0.1],
             'xh_betas' : [(4*self.num_filters,), 'zeros'],
             'h0' : [(self.num_filters,) + self.feature_size, 'zeros'],
             'c0' : [(self.num_filters,) + self.feature_size, 'zeros'],
