@@ -119,7 +119,6 @@ class ScanLayer(Layer):
         # rval is a list of each returned tuple at each time step
         # scan returns a tuple of all elements that have been joined on the time axis
         new_rval = []
-        #import ipdb; ipdb.set_trace()
         for i in range(len(rval[1])):
             new_rval += [[]]
             for j in range(1, len(rval)):
@@ -144,9 +143,9 @@ class ScanLayer(Layer):
         self.deterministic = kwargs.get('deterministic', False)
 
         self.before_scan(*args, **kwargs)
+        # BROKEN, anyway, never noticed a time gain, only a memory blow up
         if False and self.time_size is not None:
             # if the time_size is specified we can use a for loop, faster++
-            # BROKEN, anyway, never noticed a time gain, only a memory blow up
             rval = self.unroll_scan()
         else:
             rval = self.scan()
@@ -162,15 +161,17 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         between the 4 gates.
     """
     def batch_norm_addparams(self):
+        # 0.1 scaling as used in RNN BN paper
             self.param_dict.update({
-                'x_gammas' : [(4*self.output_dims[0],), 'ones', self.gamma_scale],
-                'h_gammas' : [(4*self.output_dims[0],), 'ones', self.gamma_scale],
-                'c_gammas' : [self.output_dims, 'ones', self.gamma_scale],
+                'x_gammas' : [(4*self.output_dims[0],), 'ones', 0.1],
+                'h_gammas' : [(4*self.output_dims[0],), 'ones', 0.1],
+                'c_gammas' : [self.output_dims, 'ones', 0.1],
                 'c_betas' : [self.output_dims, 'zeros'],
             })
 
 
     def param_dict_initialization(self):
+        # default 0.1 scaling on U, if higher more chances of exploding gradient
         dict_of_init = {
             'U' : [(4*self.output_dims[0], self.input_dims[0]), 'orth', 0.1],
             'xh_betas' : [(4*self.output_dims[0],), 'zeros'],
@@ -182,7 +183,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
     def initialize(self):
         super(ScanLSTM, self).initialize()
-        ### Forget biais init
+        ### Forget gate biais init to 1
         forget_biais = self.xh_betas.get_value()
         forget_biais[self.output_dims[0]:2*self.output_dims[0]] = 1.
         self.xh_betas.set_value(forget_biais)
@@ -261,6 +262,13 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
 
 class ScanConvLSTM(ScanLSTM, ConvLayer):
+    """
+        ConvLSTM implementation where the time dot product is changed by a convolution operator
+        half padded (do not change the dimensions)
+
+        Some parameters could technically not be subclassed here again, however kewords are more
+        clear and explicit to conv operation (such as num_filters) instead of output_dims
+    """
     def __init__(self, filter_size, num_filters, **kwargs):
         # strides is (1,1)
         ConvLayer.__init__(self, filter_size, num_filters, **kwargs)
@@ -268,12 +276,13 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
 
 
     def batch_norm_addparams(self):
-            self.param_dict.update({
-                'x_gammas' : [(4*self.num_filters,), 'ones', self.gamma_scale],
-                'h_gammas' : [(4*self.num_filters,), 'ones', self.gamma_scale],
-                'c_gammas' : [(self.num_filters,), 'ones', self.gamma_scale],
-                'c_betas' : [(self.num_filters,), 'zeros'],
-            })
+        # 0.1 scaling as used in RNN BN paper
+        self.param_dict.update({
+            'x_gammas' : [(4*self.num_filters,), 'ones', 0.1],
+            'h_gammas' : [(4*self.num_filters,), 'ones', 0.1],
+            'c_gammas' : [(self.num_filters,), 'ones', 0.1],
+            'c_betas' : [(self.num_filters,), 'zeros'],
+        })
 
 
     def param_dict_initialization(self):

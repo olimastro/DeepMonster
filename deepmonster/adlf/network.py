@@ -18,6 +18,7 @@ class Feedforward(object):
         self.layers = layers
         self.prefix = prefix
         self.dict_of_hyperparam = kwargs
+        self.fprop_passes = {}
         self.protected_method = [
             '__init__',
             'params',
@@ -84,7 +85,6 @@ class Feedforward(object):
 
 
     def initialize(self, i, layer, **kwargs):
-        #import ipdb; ipdb.set_trace()
         if i == 0 :
             if not hasattr(layer, 'input_dims'):
                 raise ValueError("The very first layer of this chain needs its input_dims!")
@@ -103,12 +103,20 @@ class Feedforward(object):
     # -------------------------------------- #
 
 
-    def fprop(self, x, output_id=-1, **kwargs):
-        # inpud_id := use this index to start the fprop at that point in the feedforward block
-        # output_id := will return this index, can use 'all' for returning the whole list
+    def fprop(self, x, output_id=-1, pass_name='', **kwargs):
+        """
+            Forward propagation passes through each layer
+
+            inpud_id : use this index to start the fprop at that point in the feedforward block
+            output_id : will return this index, can use 'all' for returning the whole list
+            pass_name : if defined, will update the fprop_passes dict with {pass_name : activations_list}
+        """
 
         self.activations_list = [x]
         self._fprop(**kwargs)
+
+        if len(pass_name) > 0:
+            self.fprop_passes.update({pass_name : self.activations_list})
 
         if output_id == 'all':
             return self.activations_list[1:]

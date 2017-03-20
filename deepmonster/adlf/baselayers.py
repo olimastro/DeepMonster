@@ -86,7 +86,7 @@ class Layer(AbsLayer):
         Layer class with initializable parameters and possible normalizations
     """
     def __init__(self, attr_error_tolerance='warn', initialization=Initialization({}),
-                 prefix=None, use_bias=None, batch_norm=None, gamma_scale=None, activation=None,
+                 prefix=None, use_bias=None, batch_norm=None, activation=None,
                  weight_norm=None, train_g=None, **kwargs):
         super(Layer, self).__init__(**kwargs)
 
@@ -96,7 +96,6 @@ class Layer(AbsLayer):
         self.prefix = prefix
         self.use_bias = use_bias
         self.batch_norm = batch_norm
-        self.gamma_scale = gamma_scale
         self.activation = activation
 
         self.weight_norm = weight_norm
@@ -107,7 +106,6 @@ class Layer(AbsLayer):
             self.bn_mean_only = True
         else :
             self.bn_mean_only = False
-        self.record_batch_norm_mean = False
 
 
     def set_attributes(self, dict_of_hyperparam) :
@@ -152,7 +150,6 @@ class Layer(AbsLayer):
                     param = self.initialization.get_init_tensor(key, value[0])
                 else:
                     param = self.initialization.get_old_init_method(value[1], value[0], scaling)
-                #param = initialization_method[value[1]](value[0]) * scaling
             except TypeError:
                 import ipdb ; ipdb.set_trace()
                 raise TypeError("Key: "+ self.prefix+key +" caused an error in initialization")
@@ -160,7 +157,6 @@ class Layer(AbsLayer):
             setattr(self, key, param)
             self.params += [param]
 
-        #self.pop_mu = theano.shared(0., name='pop_mu')
         if self.weight_norm:
             weight_norm(self, self.train_g)
 
@@ -218,13 +214,12 @@ class Layer(AbsLayer):
     # -------- Normalization related functions -------------- #
     def batch_norm_addparams(self):
             self.param_dict.update({
-                'gammas' : [self.output_dims[0], 'ones', self.gamma_scale]
+                'gammas' : [self.output_dims[0], 'ones']
             })
 
 
     def bn(self, x, betas, gammas, key='', deterministic=False):
         if deterministic:
-            print "hoollallalaa"
             return (x-self.avg_batch_mean) / T.sqrt(1e-6 + self.avg_batch_var)
         rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
         if not hasattr(self, 'avg_batch_mean'):
