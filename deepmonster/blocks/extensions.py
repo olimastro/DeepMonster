@@ -473,24 +473,24 @@ class AdjustSharedVariable(SimpleExtension):
 def prepare_png(X):
     def color_grid_vis(X):
         ngrid = int(np.ceil(np.sqrt(len(X))))
-        npxs = np.sqrt(X[0].size/3)
+        npxs = int(np.sqrt(X[0].size//3))
         img = np.zeros((npxs * ngrid + ngrid - 1,
                         npxs * ngrid + ngrid - 1, 3))
         for i, x in enumerate(X):
             j = i % ngrid
-            i = i / ngrid
+            i = i // ngrid
             x = tf(x)
             img[i*npxs+i:(i*npxs)+npxs+i, j*npxs+j:(j*npxs)+npxs+j] = x
         return img
 
     def bw_grid_vis(X):
         ngrid = int(np.ceil(np.sqrt(len(X))))
-        npxs = np.sqrt(X[0].size)
+        npxs = int(np.sqrt(X[0].size))
         img = np.zeros((npxs * ngrid + ngrid - 1,
                         npxs * ngrid + ngrid - 1))
         for i, x in enumerate(X):
             j = i % ngrid
-            i = i / ngrid
+            i = i // ngrid
             x = tf(x)
             img[i*npxs+i:(i*npxs)+npxs+i, j*npxs+j:(j*npxs)+npxs+j] = x
         return img
