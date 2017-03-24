@@ -138,7 +138,8 @@ if __name__ == '__main__' :
     if y.shape[0] == 1 and (args.ffmpeg or args.sample):
         y = y[0]
     # sketchy but it probably means it was normalized between -1 and 1
-    if np.min(y) < -0.9 :
+    # it will make pyplot sad if it is that way
+    if np.min(y) < -0.9 and np.min(y) > -1.1 and np.max(y) > 0.9 and np.max(y) < 1.1:
         print "renormalizing from 0 to 1"
         y += 1.
         y /= 2.
