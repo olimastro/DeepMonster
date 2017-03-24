@@ -34,11 +34,11 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
     scheme = Scheme[split[0]](num_examples, batch_size)
 
     # this is a bit sloppy, cant assume that the default is a 01 normalization (so far it is)
-    if normalization is '01':
+    if normalization == '01':
         stream = DataStream.default_stream(
             dataset=dataset,
             iteration_scheme=scheme)
-    elif normalization is '-1+1':
+    elif normalization == '-1+1':
         stream = Normalize_min1_1(
             DataStream(
                 dataset=dataset,
