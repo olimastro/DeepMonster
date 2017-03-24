@@ -8,7 +8,7 @@ class NonDeterministicLayer(RandomLayer):
     """
         Any layer subclassing this class should have limited applications
         such as dropout where it changes the theano graph only for
-        deterministic == False
+        deterministic == True / False
     """
     def fprop(self, x, **kwargs):
         det = kwargs.pop('deterministic', False)

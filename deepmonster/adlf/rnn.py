@@ -77,6 +77,9 @@ class ConvLSTM(TypicalReccurentLayer):
                  convupward=None, convtime=None, **kwargs):
         if time_filter_size is None:
             time_filter_size = utils.parse_tuple(filter_size, 2)
+        # the time application doesnt change the dimensions
+        # it is achieved through filter_size of odd shape with half padding
+        assert time_filter_size[0] % 2 == 1
         if time_num_filters is None:
             time_num_filters = num_filters
 

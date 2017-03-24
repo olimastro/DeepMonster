@@ -18,6 +18,12 @@ class AbsLayer(object):
 
 
     def set_attributes(self, attributes) :
+        """
+            Feedforward will call on each layer set_attributes with a dictionnary of all the
+            values it has to set to all layers in the feedforwad block.
+
+            By default, a layer has no attributes and will just pass this call
+        """
         pass
 
 
@@ -53,9 +59,12 @@ class AbsLayer(object):
         """
             The propagation through the network is defined by every instance
             of fprop of Layer (see Layer subclass). This is what Feedforward
-            (class below) will call on each layer.
+            (class in network) will call on each layer.
+
+            By default, it calls apply WITHOUT passing **kwargs. This prevents all the deterministic keyword
+            cascade of errors on non computing layers for exemple (like Reshape)
         """
-        raise NotImplementedError("An fprop on this layer should not have been called!")
+        return self.apply(*args)
 
 
     def param_dict_initialization(self):
@@ -68,6 +77,11 @@ class AbsLayer(object):
             This is used at initialize() to setvalues to the parameters
         """
         self.param_dict = {}
+
+
+    def apply(self, *args):
+        raise NotImplementedError("Apply was called on layer {} {} and is not implemented".format(
+            self, getattr(self, 'prefix', '')))
 
 
 
@@ -109,6 +123,9 @@ class Layer(AbsLayer):
 
 
     def set_attributes(self, dict_of_hyperparam) :
+        """
+            TODO: explain this
+        """
         for attr_name, attr_value in dict_of_hyperparam.iteritems() :
             # if attr_name is set to a layer, it will keep that layer's attr_value
             try :
@@ -187,7 +204,16 @@ class Layer(AbsLayer):
         det = kwargs.get('deterministic', False)
         wn_init = kwargs.pop('wn_init', False)
 
-        preact = self.apply(x, **kwargs)
+        try:
+            preact = self.apply(x, **kwargs)
+        except TypeError as e:
+            # some layers might want the deterministic keyword some wont,
+            # lets not punish the user for that. Is there a better way??
+            if 'deterministic' in e.message:
+                det = kwargs.pop('deterministic', False)
+                preact = self.apply(x, **kwargs)
+            else:
+                raise e
 
         if self.batch_norm:
             preact = self.bn(preact, self.betas, self.gammas, deterministic=det)
@@ -212,6 +238,7 @@ class Layer(AbsLayer):
 
 
     # -------- Normalization related functions -------------- #
+    #NOTE: batch norm is a pain to implement
     def batch_norm_addparams(self):
             self.param_dict.update({
                 'gammas' : [self.output_dims[0], 'ones']
@@ -219,22 +246,76 @@ class Layer(AbsLayer):
 
 
     def bn(self, x, betas, gammas, key='', deterministic=False):
-        if deterministic:
-            return (x-self.avg_batch_mean) / T.sqrt(1e-6 + self.avg_batch_var)
-        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
-        if not hasattr(self, 'avg_batch_mean'):
-            self.avg_batch_mean = T.zeros_like(mean)
-            self.avg_batch_var = T.ones_like(var)
-            self.avg_batch_mean.name = self.prefix + key + "_avg_batch_mean"
-            self.avg_batch_var.name = self.prefix + key + "_avg_batch_var"
+        # TODO: make spatial BN optional
+        if x.ndim == 2:
+            pattern = ('x',0)
+        elif x.ndim == 4:
+            pattern = ('x',0,'x','x')
+        else:
+            raise ValueError("Invalid dimensions in batch norm in layer {}".format(self))
+        if not hasattr(self, 'bn_updates'):
+            self.bn_updates = []
 
-            new_m = 0.9 * self.avg_batch_mean + 0.1 * mean
-            new_v = 0.9 * self.avg_batch_var + 0.1 * var
-            self.bn_updates = [(self.avg_batch_mean, new_m), (self.avg_batch_var, new_v)]
+        # batch stat creation
+        batch_stat_created_at_this_call = True
+        if len(self.bn_updates) == 0 or \
+           not any([key in u[0].name and self.prefix in u[0].name for u in self.bn_updates]):
+            # try to infer shape from betas or gammas, more secure
+            if betas is not None and betas != 0:
+                shape = betas.get_value().shape
+            elif gammas is not None and gammas != 1:
+                shape = gammas.get_value().shape
+            else:
+                # lets try this...
+                shape = (self.output_dims[0],)
+            avg_mean = Initialization({}).initialization_method['zeros'](shape)
+            avg_var = Initialization({}).initialization_method['ones'](shape)
+
+            shrd_mean = theano.shared(avg_mean,
+                                      name='{}{}_bn_mean'.format(self.prefix, key))
+            shrd_var = theano.shared(avg_var,
+                                     name='{}{}_bn_var'.format(self.prefix, key))
+        else:
+            # this for loop should ALWAYS find something...
+            for i, tup in enumerate(self.bn_updates):
+                if '{}{}_bn_mean'.format(self.prefix, key) in tup[0].name:
+                    shrd_mean = tup[0]
+                    shrd_var = self.bn_updates[i+1][0]
+                    batch_stat_created_at_this_call = False
+                    break
+            # ...so this bool has to be False here
+            if batch_stat_created_at_this_call:
+                raise RuntimeError("Come inspect code at this error!")
+
+        _shrd_mean = shrd_mean.dimshuffle(*pattern)
+        _shrd_var = shrd_var.dimshuffle(*pattern)
+
+        if deterministic:
+            return (x-_shrd_mean) / T.sqrt(1e-6 + _shrd_var)
+
+        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
+
+        if batch_stat_created_at_this_call:
+            try:
+                new_m = 0.9 * _shrd_mean + 0.1 * mean
+            except ValueError as e:
+                print "ERROR: The shape was not inferred from betas in layer {}".format(self) + \
+                        ", the ValueError could come from this."
+                raise e
+            new_v = 0.9 * _shrd_var + 0.1 * var
+            self.bn_updates += [(shrd_mean, new_m.flatten()), (shrd_var, new_v.flatten())]
+        else:
+            #FIXME: Each pass of batch norm at det=False should have its own
+            # stats for its equivalent pass at det=True
+            print "WARNING: You are recalling a layer on fprop(deterministic=False) " + \
+                    "and it has already made its batch norm statistics. It will not " + \
+                    "recreate new ones. This could cause this same fprop " + \
+                    "on deterministic=True to give incorrect results"
         return rval
 
 
-    #FIXME: the dimshuffle on the mean and var depends on their dim. Easy for 2&4D, but for a 5D or 3D tensor?
+    #FIXME: the dimshuffle on the mean and var depends on their dim.
+    # Easy for 2&4D, but for a 5D or 3D tensor?
     def init_wn(self, x, init_stdv=0.1):
         raise NotImplementedError("You can use wn for now by doing batch norm on first layer")
         m = T.mean(x, self.wn_axes_to_sum)
@@ -282,6 +363,10 @@ class RecurrentLayer(AbsLayer):
     @property
     def params(self):
         return self.upwardlayer.params + self.scanlayer.params
+
+    @property
+    def bn_updates(self):
+        return getattr(self.upwardlayer,'bn_updates',[]) + getattr(self.scanlayer,'bn_updates',[])
 
     @property
     def input_dims(self):
@@ -343,6 +428,10 @@ class RecurrentLayer(AbsLayer):
             in_up = x
         h = self.upwardlayer.fprop(in_up, **kwargs)
 
+        # sketchy but not sure how to workaround
+        # scan step function doesnt accept keywords
+        self.scanlayer.deterministic = kwargs.pop('deterministic', False)
+
         if mode == 'out2in':
             if not hasattr(self.scanlayer, 'step'):
                 # hmm maybe this can work?
@@ -352,9 +441,6 @@ class RecurrentLayer(AbsLayer):
             if outputs_info is None:
                 raise RuntimeError("There should be an outputs_info in fprop of", self.prefix)
             outputs_info = list(outputs_info)
-
-            # sketchy but not sure how to workaround
-            self.scanlayer.deterministic = kwargs.get('deterministic', False)
 
             # this calls modify outputs info in the dict, but it should be fine
             self.scanlayer.before_scan(h, axis=0)
@@ -371,7 +457,7 @@ class RecurrentLayer(AbsLayer):
         elif mode == 'scan':
             tup = (h.shape[-1],) if x.ndim == 3 else (h.shape[-3],h.shape[-2],h.shape[-1])
             h = h.reshape((x.shape[0], x.shape[1],)+tup)
-            y = self.scanlayer.apply(h)
+            y = self.scanlayer.apply(h, **kwargs)
 
         return y
 

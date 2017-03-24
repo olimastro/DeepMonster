@@ -153,11 +153,11 @@ class ConvLayer5D(ConvLayer):
     def fprop(self, x, **kwargs):
         if x.ndim == 5:
             y = x.reshape((x.shape[0]*x.shape[1],x.shape[2],x.shape[3],x.shape[4]))
-            out = super(ConvLayer5D, self).fprop(y)
+            out = super(ConvLayer5D, self).fprop(y, **kwargs)
             out = out.reshape((x.shape[0],x.shape[1],out.shape[1],out.shape[2],out.shape[3]))
         else:
             # act normal
-            out = super(ConvLayer5D, self).fprop(x)
+            out = super(ConvLayer5D, self).fprop(x, **kwargs)
         return out
 
 

@@ -93,6 +93,9 @@ class ScanLayer(Layer):
 
 
     def scan(self):
+        # this is the result of the batch statistics being created inside
+        # the step function
+        strict = False if self.batch_norm else True
         rval, updates = theano.scan(
             self.step,
             sequences=self.scan_namespace['sequences'],
@@ -138,9 +141,10 @@ class ScanLayer(Layer):
                 - scan
                 - do things after scan
         """
+        #NOTE: this assignment has been switched to RecurrentLayer.fprop as it should be
         # this is not very clean and could lead to error, but is there a better way to
         # propagate this information into the step function of scan?
-        self.deterministic = kwargs.get('deterministic', False)
+        # self.deterministic = kwargs.pop('deterministic', False)
 
         self.before_scan(*args, **kwargs)
         # BROKEN, anyway, never noticed a time gain, only a memory blow up

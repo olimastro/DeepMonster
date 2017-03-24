@@ -20,7 +20,7 @@ class BilinearUpsampling(AbsLayer):
         self.output_dims = self.input_dims[:-2] + output_inner_dims
         #print "setting output dims", self.output_dims
 
-    def fprop(self, x):
+    def apply(self, x):
         return bilinear_upsampling(x, ratio=self.ratio,
                                    use_1D_kernel=self.use_1D_kernel)
 
@@ -52,7 +52,7 @@ class GaussianKernelUpsampling(AbsLayer):
         output_inner_dims = tuple(d * self.ratio for d in self.input_dims[-2:])
         self.output_dims = self.input_dims[:-2] + output_inner_dims
 
-    def fprop(self, x):
+    def apply(self, x):
         # first fill zeros between each pixels
         # assumes the last 3 are c01
         shape = tuple(x.shape[i] for i in range(x.ndim-2))
