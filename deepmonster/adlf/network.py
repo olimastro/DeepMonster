@@ -1,3 +1,6 @@
+import inspect
+
+
 class Feedforward(object):
     """
         Feedforward abstract class managing a series of Layer class.
@@ -98,6 +101,10 @@ class Feedforward(object):
         input_id = kwargs.pop('input_id', 0)
         if i < input_id:
             return
+        # kwargs filtering
+        for keyword in kwargs.keys():
+            if keyword not in layer.accepted_kwargs_fprop:
+                kwargs.pop(keyword)
         y = layer.fprop(self.activations_list[-1], **kwargs)
         self.activations_list.append(y)
     # -------------------------------------- #

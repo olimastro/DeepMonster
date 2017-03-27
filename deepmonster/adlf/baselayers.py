@@ -1,4 +1,5 @@
 import copy
+import inspect
 import theano
 import theano.tensor as T
 
@@ -60,11 +61,8 @@ class AbsLayer(object):
             The propagation through the network is defined by every instance
             of fprop of Layer (see Layer subclass). This is what Feedforward
             (class in network) will call on each layer.
-
-            By default, it calls apply WITHOUT passing **kwargs. This prevents all the deterministic keyword
-            cascade of errors on non computing layers for exemple (like Reshape)
         """
-        return self.apply(*args)
+        return self.apply(*args, **kwargs)
 
 
     def param_dict_initialization(self):
@@ -82,6 +80,26 @@ class AbsLayer(object):
     def apply(self, *args):
         raise NotImplementedError("Apply was called on layer {} {} and is not implemented".format(
             self, getattr(self, 'prefix', '')))
+
+
+    @property
+    def accepted_kwargs_fprop(self):
+        """
+            This function check every method fprop / apply of all child classes and return
+            the set of keywords allowed in the calls.
+        """
+        mro = self.__class__.mro()
+        kwargs = set()
+        for cl in mro:
+            if hasattr(cl, 'fprop'):
+                argspec = inspect.getargspec(cl.fprop)
+                if argspec.defaults is not None:
+                    kwargs.update(argspec.args[-len(argspec.defaults):])
+            if hasattr(cl, 'apply'):
+                argspec = inspect.getargspec(cl.apply)
+                if argspec.defaults is not None:
+                    kwargs.update(argspec.args[-len(argspec.defaults):])
+        return kwargs
 
 
 
@@ -196,19 +214,19 @@ class Layer(AbsLayer):
         return x + self.betas.dimshuffle(*pattern)
 
 
-    def fprop(self, x, **kwargs):
+    def fprop(self, x, wn_init=False, deterministic=False, **kwargs):
         """
             fprop of this class is meant to deal with all the various inference / training phase
             or normalization scheme a layer could want
         """
-        det = kwargs.get('deterministic', False)
-        wn_init = kwargs.pop('wn_init', False)
 
+        # deterministic is a 'fundamental' keyword and potentially can be used or not
+        # used everywhere. The apply of a child method doesn't have to bother
+        # all the time with it.
+        kwargs.update({'deterministic':deterministic})
         try:
             preact = self.apply(x, **kwargs)
         except TypeError as e:
-            # some layers might want the deterministic keyword some wont,
-            # lets not punish the user for that. Is there a better way??
             if 'deterministic' in e.message:
                 det = kwargs.pop('deterministic', False)
                 preact = self.apply(x, **kwargs)
@@ -216,7 +234,8 @@ class Layer(AbsLayer):
                 raise e
 
         if self.batch_norm:
-            preact = self.bn(preact, self.betas, self.gammas, deterministic=det)
+            preact = self.bn(preact, self.betas, self.gammas,
+                             deterministic=deterministic)
         if wn_init:
             preact = self.init_wn(preact)
 
@@ -376,6 +395,13 @@ class RecurrentLayer(AbsLayer):
     def output_dims(self):
         return self.scanlayer.output_dims
 
+    @property
+    def accepted_kwargs_fprop(self):
+        kwargs = super(RecurrentLayer, self).accepted_kwargs_fprop()
+        kwargs.update(self.scanlayer.accepted_kwargs_fprop())
+        kwargs.update(self.upwardlayer.accepted_kwargs_fprop())
+        return kwargs
+
 
     def get_outputs_info(self, *args):
         return self.scanlayer.get_outputs_info(*args)
@@ -396,7 +422,7 @@ class RecurrentLayer(AbsLayer):
         self.scanlayer.set_io_dims(self.upwardlayer.output_dims)
 
 
-    def fprop(self, x, **kwargs):
+    def fprop(self, x, outputs_info=None, **kwargs):
         """
             This fprop should deal with various setups. if x.ndim == 5 it is pretty easy,
             every individual fprop of the rnn should handle this case easily since the fprop
@@ -407,9 +433,6 @@ class RecurrentLayer(AbsLayer):
             In this case kwargs should contain outputs_info which IN THE SAME ORDER should correspond
             to the reccurent state that the scanlayer.step is using.
         """
-        # we don't want to give this to upwardlayer
-        outputs_info = kwargs.pop('outputs_info', None)
-
         # logic here is that if x.ndim is 2 or 4, x is in bc or bc01
         # for 3 or 5 x is in tbc or tbc01. When t is here, you want to
         # scan on the whole thing.
@@ -439,7 +462,7 @@ class RecurrentLayer(AbsLayer):
 
             # the outputinfo of the outside scan should contain the reccurent state
             if outputs_info is None:
-                raise RuntimeError("There should be an outputs_info in fprop of", self.prefix)
+                raise RuntimeError("There should be an outputs_info in fprop of "+self.prefix)
             outputs_info = list(outputs_info)
 
             # this calls modify outputs info in the dict, but it should be fine
@@ -460,6 +483,33 @@ class RecurrentLayer(AbsLayer):
             y = self.scanlayer.apply(h, **kwargs)
 
         return y
+
+
+
+class WrappedLayer(object):
+    """
+        This class is used to intercept a normal application of a layer
+        to do something else. This class owns almost nothing and returns
+        attributes and methods of its layer.
+
+        Note: One limitation is that a normal interception will be done by writing
+        an fprop method. Its accepted_kwargs_fprop will have to be case specific
+        and written by hand since we do not inherit form AbsLayer (doing so would
+        mean losing crucial stuff from the __getattribute__ below).
+    """
+    def __init__(self, layer):
+        self.layer = layer
+
+
+    def __getattribute__(self, name):
+        """
+            Any called attribute or method will return the one of the wrapped layer
+            if it is not defined in this class.
+        """
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            return self.layer.__getattribute__(name)
 
 
 

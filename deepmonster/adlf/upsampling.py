@@ -47,7 +47,7 @@ class GaussianKernelUpsampling(AbsLayer):
         self.kernel = T.as_tensor_variable(kernel.astype(np.float32))
         super(GaussianKernelUpsampling, self).__init__(**kwargs)
 
-    def set_io_dims(self,tup):
+    def set_io_dims(self, tup):
         self.input_dims = tup
         output_inner_dims = tuple(d * self.ratio for d in self.input_dims[-2:])
         self.output_dims = self.input_dims[:-2] + output_inner_dims

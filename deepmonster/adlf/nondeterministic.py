@@ -10,12 +10,11 @@ class NonDeterministicLayer(RandomLayer):
         such as dropout where it changes the theano graph only for
         deterministic == True / False
     """
-    def fprop(self, x, **kwargs):
-        det = kwargs.pop('deterministic', False)
-        if det:
+    def fprop(self, x, deterministic=False, **kwargs):
+        if deterministic:
             return x
         else:
-            return self.apply(x)
+            return self.apply(x, **kwargs)
 
 
 
