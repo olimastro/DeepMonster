@@ -397,10 +397,14 @@ class RecurrentLayer(AbsLayer):
 
     @property
     def accepted_kwargs_fprop(self):
-        kwargs = super(RecurrentLayer, self).accepted_kwargs_fprop()
-        kwargs.update(self.scanlayer.accepted_kwargs_fprop())
-        kwargs.update(self.upwardlayer.accepted_kwargs_fprop())
+        kwargs = super(RecurrentLayer, self).accepted_kwargs_fprop
+        kwargs.update(self.scanlayer.accepted_kwargs_fprop)
+        kwargs.update(self.upwardlayer.accepted_kwargs_fprop)
         return kwargs
+
+    #@property
+    #def outputs_info(self):
+    #    return self.scanlayer.outputs_info
 
 
     def get_outputs_info(self, *args):

@@ -27,6 +27,9 @@ class Feedforward(object):
             'params',
             'propagate',
             'fprop',
+            'input_dims',
+            'output_dims',
+            'get_outputs_info',
         ]
 
         set_attr = kwargs.pop('set_attr', True)
@@ -62,12 +65,31 @@ class Feedforward(object):
         pass
 
 
+    # how to mix these two properties with the propagate decorator?
     @property
     def params(self):
         params = []
         for layer in self.layers :
             params += layer.params
         return params
+
+
+    @property
+    def outputs_info(self):
+        outputs_info = []
+        for layer in self.layers:
+            if hasattr(layer, 'outputs_info'):
+                outputs_info += layer.outputs_info
+        return tuple(outputs_info)
+
+
+    @property
+    def output_dims(self):
+        return self.layers[-1].output_dims
+
+    @property
+    def input_dims(self):
+        return self.layers[-1].input_dims
 
 
     def propagate(self, func, *args, **kwargs):
@@ -78,7 +100,7 @@ class Feedforward(object):
             func(i, layer, *args, **kwargs)
 
 
-    # THESE METHODS ARE PROPAGATED WHEN CALLED
+    # ---- THESE METHODS ARE PROPAGATED WHEN CALLED ----
     # exemple : foo = Feedforward(layers, 'foo', **fooconfig)
     #           foo.switch_for_inference()
     #           will propagate switch_for_inference to all layers
@@ -107,7 +129,12 @@ class Feedforward(object):
                 kwargs.pop(keyword)
         y = layer.fprop(self.activations_list[-1], **kwargs)
         self.activations_list.append(y)
-    # -------------------------------------- #
+
+
+    def _get_outputs_info(self, i, layer, *args, **kwargs):
+        if hasattr(layer, 'get_outputs_info'):
+            self._outputs_info += layer.get_outputs_info(*args, **kwargs)
+    # ------------------------------------------------- #
 
 
     def fprop(self, x, output_id=-1, pass_name='', **kwargs):
@@ -129,3 +156,18 @@ class Feedforward(object):
             return self.activations_list[1:]
         else:
             return self.activations_list[output_id]
+
+
+    def get_outputs_info(self, *args, **kwargs):
+        self._outputs_info = []
+        self._get_outputs_info(*args, **kwargs)
+        return self._outputs_info
+
+
+if __name__ == '__main__':
+    from simple import FullyConnectedLayer
+    lay = [
+        FullyConnectedLayer(input_dims=45, output_dims=50)
+    ]
+    feedfor = Feedforward(lay, 'ok', **{})
+    import ipdb; ipdb.set_trace()

@@ -90,17 +90,21 @@ class AddConditioning(WrappedLayer):
         if x.ndim == 2:
             conditioning = T.inc_subtensor(conditioning[T.arange(x.shape[0]), conditions_on], 1.)
             x = T.set_subtensor(x[:,-self.nb_class:], conditioning)
+
         elif x.ndim == 3:
             conditioning = T.inc_subtensor(conditioning[:, T.arange(x.shape[0]), conditions_on], 1.)
             x = T.set_subtensor(x[:,:,-self.nb_class:], conditioning)
+
         elif x.ndim == 4:
             conditioning = T.inc_subtensor(conditioning[T.arange(x.shape[0]), conditions_on, :, :],
                                            1.)
             x = T.set_subtensor(x[:,-self.nb_class:,:,:], conditioning)
+
         elif x.ndim == 5:
             conditioning = T.inc_subtensor(conditioning[:, T.arange(x.shape[0]), conditions_on,:,:],
                                            1.)
             x = T.set_subtensor(x[:,:,-self.nb_class:,:,:], conditioning)
+
         return self.layer.fprop(x, **kwargs)
 
 
