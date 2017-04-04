@@ -93,22 +93,30 @@ class ScanLayer(Layer):
 
 
     def scan(self):
-        # this is the result of the batch statistics being created inside
-        # the step function
+        # if there is a MissingInputError coming from a ScanLayer, be wary
+        # that it could be because you have created a variable in the
+        # step function (like it happens in batch norm) and strict is True.
+        # Or some other scan shenanigans
         strict = False if self.batch_norm else True
         rval, updates = theano.scan(
             self.step,
             sequences=self.scan_namespace['sequences'],
             non_sequences=self.scan_namespace['non_sequences'],
             outputs_info=self.scan_namespace['outputs_info'],
-            strict=True)
-        return rval
+            strict=strict)
+
+        return rval, updates
 
 
-    def after_scan(self, scanout):
+    def after_scan(self, scanout, updates):
         """
             Do manipulations after scan
         """
+        # needed for batch norm
+        if not hasattr(self, '_updates'):
+            self._updates = [updates]
+        else:
+            self._updates.extend(updates)
         return scanout
 
 
@@ -152,8 +160,8 @@ class ScanLayer(Layer):
             # if the time_size is specified we can use a for loop, faster++
             rval = self.unroll_scan()
         else:
-            rval = self.scan()
-        out = self.after_scan(rval)
+            rval, updates = self.scan()
+        out = self.after_scan(rval, updates)
 
         return out
 
@@ -245,7 +253,14 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         else :
             h = o * T.tanh(c)
 
-        return h, c
+        # same as the error message in batch norm, next time this is called
+        # at deterministic=False it wont use the batch norm stat
+        if self.batch_norm and not deterministic and not hasattr(self,'_updates'):
+            updates = self.bn_updates
+        else:
+            updates = []
+        return [h, c], updates
+
 
     def get_outputs_info(self, n):
         outputs_info = [T.repeat(self.h0[None,...], n, axis=0),
@@ -260,7 +275,8 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         self.set_scan_namespace(sequences, outputs_info)
 
 
-    def after_scan(self, scanout):
+    def after_scan(self, scanout, updates):
+        scanout = super(ScanLSTM, self).after_scan(scanout, updates)
         return scanout[0]
 
 
@@ -311,7 +327,7 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
     # FIX THAT if needed
 """
     def apply_zoneout(self, step):
-_
+
             Act kind of like a decorator around the step function
             of scan which will perform the zoneout.
 
@@ -349,3 +365,8 @@ _
             return zonedout_h, zonedout_c
         return zonedout_step
 """
+
+
+
+if __name__ == '__main__':
+    pass

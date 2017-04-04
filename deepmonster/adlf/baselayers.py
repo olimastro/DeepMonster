@@ -265,6 +265,14 @@ class Layer(AbsLayer):
 
 
     def bn(self, x, betas, gammas, key='', deterministic=False):
+        # make sure the format of the key is _something_
+        # if it is this case, lets hope the user made only one batch norm call at this layer
+        # with an empty key TODO:FIX THIS!
+        if key != '':
+            if '_' != key[0]:
+                key = '_' + key
+            if '_' != key[-1]:
+                key = key + '_'
         # TODO: make spatial BN optional
         if x.ndim == 2:
             pattern = ('x',0)
@@ -291,19 +299,20 @@ class Layer(AbsLayer):
             avg_var = Initialization({}).initialization_method['ones'](shape)
 
             shrd_mean = theano.shared(avg_mean,
-                                      name='{}{}_bn_mean'.format(self.prefix, key))
+                                      name='{}{}bn_mean'.format(self.prefix, key))
             shrd_var = theano.shared(avg_var,
-                                     name='{}{}_bn_var'.format(self.prefix, key))
+                                     name='{}{}bn_var'.format(self.prefix, key))
         else:
             # this for loop should ALWAYS find something...
             for i, tup in enumerate(self.bn_updates):
-                if '{}{}_bn_mean'.format(self.prefix, key) in tup[0].name:
+                if '{}{}bn_mean'.format(self.prefix, key) in tup[0].name:
                     shrd_mean = tup[0]
                     shrd_var = self.bn_updates[i+1][0]
                     batch_stat_created_at_this_call = False
                     break
             # ...so this bool has to be False here
             if batch_stat_created_at_this_call:
+                import ipdb; ipdb.set_trace()
                 raise RuntimeError("Come inspect code at this error!")
 
         _shrd_mean = shrd_mean.dimshuffle(*pattern)
@@ -385,7 +394,14 @@ class RecurrentLayer(AbsLayer):
 
     @property
     def bn_updates(self):
-        return getattr(self.upwardlayer,'bn_updates',[]) + getattr(self.scanlayer,'bn_updates',[])
+        updt = getattr(self.upwardlayer,'bn_updates',[])
+        orderedupdt = getattr(self.scanlayer,'_updates',[])
+        if isinstance(orderedupdt, list):
+            updt += orderedupdt
+        else:
+            # it is an OrderedUpdate
+            updt = updt + [item for item in orderedupdt.iteritems()]
+        return updt
 
     @property
     def input_dims(self):
@@ -474,12 +490,12 @@ class RecurrentLayer(AbsLayer):
             args = tuple(self.scanlayer.scan_namespace['sequences'] + \
                          outputs_info + \
                          self.scanlayer.scan_namespace['non_sequences'])
-            almosty = self.scanlayer.step(*args)
+            scanout = self.scanlayer.step(*args)
 
             # this is needed for the outside scan
-            self.outputs_info = almosty
+            self.outputs_info = tuple(scanout[0])
 
-            y = self.scanlayer.after_scan(almosty)
+            y = self.scanlayer.after_scan(scanout[0], scanout[1])
 
         elif mode == 'scan':
             tup = (h.shape[-1],) if x.ndim == 3 else (h.shape[-3],h.shape[-2],h.shape[-1])

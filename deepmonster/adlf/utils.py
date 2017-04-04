@@ -152,6 +152,9 @@ def find_bn_params(anobject):
 
     updt = []
     for layer in layers:
-        if hasattr(layer, 'bn_updates'):
+        # RNN batch norm is a MESS
+        if hasattr(layer, '_updates'):
+            updt.extend(layer._updates)
+        elif hasattr(layer, 'bn_updates'):
             updt.extend(layer.bn_updates)
     return updt
