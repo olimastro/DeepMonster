@@ -31,7 +31,7 @@ class Reshape(AbsLayer):
 
 
 class Flatten(AbsLayer):
-    # for now, only flat anything to bc
+    # for now, only flat height / width to channel
     def set_io_dims(self, tup):
         self.input_dims = tup
         od = 1
@@ -41,7 +41,9 @@ class Flatten(AbsLayer):
 
 
     def apply(self, x):
-        return T.flatten(x, outdim=2)
+        assert x.ndim == 4 or x.ndim == 5
+        outdim = 2 if x.ndim == 4 else 3
+        return T.flatten(x, outdim=outdim)
 
 
 
