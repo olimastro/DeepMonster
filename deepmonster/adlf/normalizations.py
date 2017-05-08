@@ -76,9 +76,14 @@ def batch_norm(x, betas, gammas, bn_mean_only=False):
     elif betas.ndim == 3:
         betas = betas.dimshuffle((x.ndim-3)*('x',)+(0,1,2,))
 
+    if gammas == 1:
+        pass
+    else:
+        gammas = gammas.dimshuffle(pattern)
+
     var_corrected = var + 1e-6
     y = theano.tensor.nnet.bn.batch_normalization(
-        inputs=x, gamma=gammas.dimshuffle(pattern), beta=betas,
+        inputs=x, gamma=gammas, beta=betas,
         mean=mean,
         std=theano.tensor.sqrt(var_corrected),
         mode="low_mem")

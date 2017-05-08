@@ -19,9 +19,10 @@ class ScanLayer(Layer):
         The LSTM for exemple applies a dot through time, so it has the effective application
         of a fullyconnected. You want the information of the fullyconnected for shape propagation.
     """
-    # TODO: There is a problem with how the arguments are passed to the step function. If there is another
-    # norm that requires params and you want to have it optional with batch norm, having the two sets of
-    # keyword is going to crash. Workaround: make these things act like decorator?
+    # TODO: There is a problem with how the arguments are passed to the step function.
+    # If there is another norm that requires params and you want to have it optional with
+    # batch norm, having the two sets of keyword is going to crash.
+    # Workaround: make these things act like decorator?
     @property
     def non_sequences(self):
         """
@@ -255,7 +256,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
         # same as the error message in batch norm, next time this is called
         # at deterministic=False it wont use the batch norm stat
-        if self.batch_norm and not deterministic and not hasattr(self,'_updates'):
+        if False and self.batch_norm and not deterministic and not hasattr(self,'_updates'):
             updates = self.bn_updates
         else:
             updates = []

@@ -133,12 +133,6 @@ class Layer(AbsLayer):
         self.weight_norm = weight_norm
         self.train_g = train_g
 
-        if self.batch_norm == 'mean_only':
-            self.batch_norm = True
-            self.bn_mean_only = True
-        else :
-            self.bn_mean_only = False
-
 
     def set_attributes(self, dict_of_hyperparam) :
         """
@@ -171,7 +165,7 @@ class Layer(AbsLayer):
     def initialize(self) :
         self.params = []
         self.param_dict_initialization()
-        if self.batch_norm:
+        if self.batch_norm and not self.weight_norm:
             self.batch_norm_addparams()
 
         for key, value in self.param_dict.iteritems() :
@@ -194,6 +188,12 @@ class Layer(AbsLayer):
 
         if self.weight_norm:
             weight_norm(self, self.train_g)
+
+        if self.batch_norm == 'mean_only':
+            self.batch_norm = True
+            self.bn_mean_only = True
+        else :
+            self.bn_mean_only = False
 
 
     def apply_bias(self, x):
@@ -234,7 +234,11 @@ class Layer(AbsLayer):
                 raise e
 
         if self.batch_norm:
-            preact = self.bn(preact, self.betas, self.gammas,
+            if self.weight_norm and self.bn_mean_only:
+                gammas = None
+            else:
+                gammas = self.gammas
+            preact = self.bn(preact, self.betas, gammas,
                              deterministic=deterministic)
         if wn_init:
             preact = self.init_wn(preact)
@@ -265,6 +269,12 @@ class Layer(AbsLayer):
 
 
     def bn(self, x, betas, gammas, key='', deterministic=False):
+        if betas is None:
+            betas = 0
+        if gammas is None:
+            gammas = 1
+        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
+        return rval
         # make sure the format of the key is _something_
         # if it is this case, lets hope the user made only one batch norm call at this layer
         # with an empty key TODO:FIX THIS!
@@ -335,7 +345,7 @@ class Layer(AbsLayer):
         else:
             #FIXME: Each pass of batch norm at det=False should have its own
             # stats for its equivalent pass at det=True
-            print "WARNING: You are recalling a layer on fprop(deterministic=False) " + \
+            print "WARNING: You are recalling {} on fprop(deterministic=False) ".format(self.prefix) + \
                     "and it has already made its batch norm statistics. It will not " + \
                     "recreate new ones. This could cause this same fprop " + \
                     "on deterministic=True to give incorrect results"
