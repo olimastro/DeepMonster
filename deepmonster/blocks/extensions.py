@@ -167,13 +167,14 @@ class FileHandlingExt(SimpleExtension):
 
 class SaveExperiment(FileHandlingExt):
     def __init__(self, parameters, save_optimizer=True,
-                 on_best=False, **kwargs) :
+                 on_best=False, new_copy=False, **kwargs) :
         super(SaveExperiment, self).__init__(**kwargs)
 
         self.parameters = parameters
         self.save_optimizer = save_optimizer
         self.on_best = on_best
         self.best_val = np.inf
+        self.new_copy = new_copy
 
 
     def _save_parameters(self, prefix='', network_move=False):
@@ -183,7 +184,8 @@ class SaveExperiment(FileHandlingExt):
             model_params.update(
                 {param.name : param.get_value()})
 
-        self.exp_obj.save(model_params, prefix + 'parameters', 'pkl', network_move=network_move)
+        self.exp_obj.save(model_params, prefix + 'parameters', 'pkl',
+                          append_time=self.new_copy, network_move=network_move)
 
 
     def _save_optimizer(self, prefix='', network_move=False):
@@ -234,17 +236,21 @@ class SaveExperiment(FileHandlingExt):
 
 
 class LoadExperiment(FileHandlingExt):
-    def __init__(self, parameters, load_optimizer=True, full_load=False, which_load='local', **kwargs) :
+    def __init__(self, parameters, load_optimizer=True, full_load=False,
+                 path=None, which_load='local', **kwargs) :
+        # if path is set, it will fetch directly this path and not go through the exp object
         kwargs.setdefault('before_first_epoch', True)
         super(LoadExperiment, self).__init__(**kwargs)
 
         self.parameters = parameters
-        self.path = self.exp_obj.local_path if which_load is 'local' else self.exp_obj.network_path
         self.load_optimizer = load_optimizer
         self.full_load = full_load
+        self.path = path
 
 
-    def do(self, which_callback, *args) :
+    def _do(self) :
+        if self.path is None:
+            self.path = self.exp_obj.local_path if which_load is 'local' else self.exp_obj.network_path
         # this extension need to be used in case of requeue so if for first time launch, not crash
         if not os.path.isfile(self.path+'_parameters.pkl'):
             print "No file found, no loading"
@@ -419,7 +425,6 @@ class FancyReconstruct(Reconstruct):
 
         assert cl_accumulated.sum() == nb_class * 10
         self.data = np.stack(data, axis=0)
-
 
 
     def _do(self, network_move=False):

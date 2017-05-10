@@ -68,7 +68,7 @@ class ConvLayer(Layer) :
 
     def param_dict_initialization(self):
         if self.tied_bias :
-            biases_dim = (self.num_filters)
+            biases_dim = (self.num_filters,)
         else :
             biases_dim = self.output_dims
 

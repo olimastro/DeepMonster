@@ -78,7 +78,12 @@ def get_cifar10(split, sources, load_in_memory):
 
 def get_svhn(split, sources, load_in_memory):
     from fuel.datasets import SVHN
-    return SVHN(2, split, sources=sources, load_in_memory=load_in_memory)
+    if 'test' not in split:
+        subset = slice(0, 62000) if 'train' in split else slice(62000, 72000)
+        split = ('train',)
+    else:
+        subset = None
+    return SVHN(2, split, sources=sources, subset=subset, load_in_memory=load_in_memory)
 
 
 def get_celeba(split, sources, load_in_memory):
