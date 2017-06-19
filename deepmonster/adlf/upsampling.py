@@ -21,8 +21,16 @@ class BilinearUpsampling(AbsLayer):
         #print "setting output dims", self.output_dims
 
     def apply(self, x):
-        return bilinear_upsampling(x, ratio=self.ratio,
-                                   use_1D_kernel=self.use_1D_kernel)
+        if x.ndim == 5 :
+            out = x.reshape((x.shape[0]*x.shape[1],x.shape[2],x.shape[3],x.shape[4]))
+        else:
+            out = x
+
+        out = bilinear_upsampling(out, ratio=self.ratio,
+                                  use_1D_kernel=self.use_1D_kernel)
+        if x.ndim == 5 :
+            out = out.reshape((x.shape[0],x.shape[1],x.shape[2],out.shape[-2],out.shape[-1]))
+        return out
 
 
 class GaussianKernelUpsampling(AbsLayer):
