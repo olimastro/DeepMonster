@@ -17,59 +17,27 @@ class Experiment(SimpleExtension):
     """
         This class is intended to do all the savings and bookeeping required
     """
-    def __init__(self, name, local_path, network_path, extra_infos='',
+    def __init__(self, name, local_path, network_path=None, extra_infos='',
                  crush_old=False, full_dump=False, **kwargs):
-        kwargs.setdefault('before_first_epoch', True)
+        kwargs.setdefault('before_training', True)
         super(Experiment, self).__init__(**kwargs)
 
         # global full_dump param for all ext if not individually set
         self.full_dump = -1 if full_dump is False else full_dump
         assert crush_old in [False, 'local', 'network', 'all']
-        print "Setting up experiment files"
-
-        lt = time.localtime()
-        timefootprint = str(lt.tm_year) + str(lt.tm_mon) + str(lt.tm_mday) + \
-                str(lt.tm_hour) + str(lt.tm_min)
-
-        local_path += name + '/'
-        network_path += name + '/'
-
-        cmd = "mkdir --parents " + local_path
-        print "Doing:", cmd
-        os.system(cmd)
-        cmd = "mkdir --parents " + network_path
-        print "Doing:", cmd
-        os.system(cmd)
-
-        if len(os.listdir(local_path)) > 0:
-            print "Files already in", local_path
-        if len(os.listdir(network_path)) > 0:
-            print "Files already in", network_path
-        if crush_old is not False:
-            print "WARNING: Will remove them in 10s (crush_old={})".format(crush_old)
-            time.sleep(10) # give time to the user to react
-            if crush_old in ['local','all']:
-                cmd = 'rm -r {}*'.format(local_path)
-                print "Doing:", cmd
-                os.system(cmd)
-            if crush_old in ['network','all']:
-                cmd = 'rm -r {}*'.format(network_path)
-                print "Doing:", cmd
-                os.system(cmd)
-
-        host = socket.gethostname()
-
-        f = open(network_path + '{}.txt'.format(name), 'w')
-        f.write('This experiment named {} has local files on {}\n'.format(name, host))
-        f.write(timefootprint+'\n')
-        f.write('\n')
-        f.write(extra_infos)
-        f.write('\n')
+        if network_path is None:
+            assert full_dump == -1, "Full dump was given a frequency but networkpath is None"
+            if crush_old == 'all':
+                crush_old = 'local'
+            elif crush_old == 'network':
+                crush_old = False
+        self.crush_old = crush_old
 
         self.exp_name = name
-        self.local_path = local_path
-        self.network_path = network_path
-        self.host = host
+        self.local_path = local_path + name + '/'
+        self.network_path = network_path if network_path is None else network_path + name + '/'
+        self.host = socket.gethostname()
+        self.extra_infos = extra_infos
 
 
     @property
@@ -77,8 +45,47 @@ class Experiment(SimpleExtension):
         return self.main_loop.status['epochs_done']
 
 
+    def _manage_files(self, path, crush_old_cond):
+        try:
+            os.makedirs(path)
+        except OSError:
+            pass
+        if len(os.listdir(path)) > 0:
+            print "Files already in", path
+            if self.crush_old in crush_old_cond:
+                print "WARNING: Will remove them in 5s (crush_old={})".format(self.crush_old)
+                time.sleep(6) # give time to the user to react
+                cmd = 'rm -r {}*'.format(path)
+                print "Doing:", cmd
+                os.system(cmd)
+
+
     def do(self, which_callback, *args):
-        pass
+        if which_callback == 'before_training':
+            print "Setting up experiment files"
+            for ext in self.main_loop.extensions:
+                if isinstance(ext, LoadExperiment) and self.crush_old != False:
+                    print "WARNING: The LoadExperiment extension is in the MainLoop and the " +\
+                            "flag to remove files is activated, deactivating it"
+                    self.crush_old = False
+
+            lt = time.localtime()
+            timefootprint = str(lt.tm_year) + str(lt.tm_mon) + str(lt.tm_mday) + \
+                    str(lt.tm_hour) + str(lt.tm_min)
+
+            self._manage_files(self.local_path, ['local', 'all'])
+            if self.network_path is not None:
+                self._manage_files(self.network_path, ['network', 'all'])
+
+            if self.network_path is not None:
+                f = open(self.network_path + '{}.txt'.format(self.exp_name), 'w')
+                f.write('This experiment named {} has local files on {}\n'.format(self.exp_name, self.host))
+                f.write(timefootprint+'\n')
+                f.write('\n')
+                f.write(self.extra_infos)
+                f.write('\n')
+        else:
+            pass
 
 
     def save(self, obj, name, ext, append_time=False, network_move=False):
@@ -236,31 +243,37 @@ class SaveExperiment(FileHandlingExt):
 
 
 class LoadExperiment(FileHandlingExt):
-    def __init__(self, parameters, load_optimizer=True, full_load=False,
+    def __init__(self, parameters, load_optimizer=True, full_load=True,
                  path=None, which_load='local', **kwargs) :
         # if path is set, it will fetch directly this path and not go through the exp object
-        kwargs.setdefault('before_first_epoch', True)
+        kwargs.setdefault('before_training', True)
         super(LoadExperiment, self).__init__(**kwargs)
 
         self.parameters = parameters
         self.load_optimizer = load_optimizer
         self.full_load = full_load
         self.path = path
+        self.which_load = which_load
+
+
+    def _do_full_dump(self):
+        self._do()
 
 
     def _do(self) :
         if self.path is None:
-            self.path = self.exp_obj.local_path if which_load is 'local' else self.exp_obj.network_path
+            self.path = self.exp_obj.local_path if self.which_load is 'local' else self.exp_obj.network_path
+            self.path += self.exp_obj.exp_name
         # this extension need to be used in case of requeue so if for first time launch, not crash
         if not os.path.isfile(self.path+'_parameters.pkl'):
             print "No file found, no loading"
             return
         if self.full_load :
-            print "Full load activated..."
             # a full load loads: main_loop.status, main_loop.log, parameters.pkl and optimizer.pkl
             # it will also hack through other extensions to set them straight
             if not self.load_optimizer:
                 print "WARNING: You asked for a full load but load_optimizer is at False"
+            print "Loading MainLoop log"
             ml_log = pkl.load(open(self.path+'_main_loop_log.pkl', 'r'))
             setattr(self.main_loop, 'log', ml_log)
 
@@ -374,6 +387,7 @@ class Reconstruct(FileHandlingExt):
         super(Reconstruct, self).__init__(**kwargs)
         self.model = model
         self.datastream = datastream #fuel object
+        self.src_done = False
 
 
     def _do(self, network_move=False) :
@@ -385,15 +399,24 @@ class Reconstruct(FileHandlingExt):
 
 
     # the do is getting deeper...
-    def _do_save(self, x, reconstructions, network_move=False):
+    def _do_save(self, x, reconstructions, network_move=False, only_one_src=False):
         if self.file_format == 'npz':
             out = np.concatenate((x[np.newaxis], reconstructions[np.newaxis]), axis=0)
             self.exp_obj.save(out, 'reconstructions', 'npz',
                               append_time=True, network_move=network_move)
         else:
-            self.exp_obj.save(x, 'src_rec', 'png', append_time=True,
-                              network_move=network_move)
             self.exp_obj.save(reconstructions, 'reconstructions', 'png', append_time=True,
+                              network_move=network_move)
+            if self.src_done:
+                return
+            elif only_one_src:
+                append_time = False
+                network_move = True
+                self.src_done = True
+            else:
+                append_time = True
+                network_move = network_move
+            self.exp_obj.save(x, 'src_rec', 'png', append_time=append_time,
                               network_move=network_move)
 
 
@@ -404,6 +427,12 @@ class FancyReconstruct(Reconstruct):
 
         if not isinstance(datastream, list):
             datastream = [datastream]
+        # infer batch size and assert there are targets
+        dumzie = next(datastream[0].get_epoch_iterator())
+        assert len(dumzie) == 2, "FancyReconstruct need targets, could not find"
+        assert dumzie[0].shape[0] >= nb_class * 10, "Cannot use FancyReconstruct extension with smaller batch size than 10 * nb_class"
+        nb_extra_data = dumzie[0].shape[0] - 100
+
         k = 10/len(datastream)
         self.nb_class = nb_class
         data = []
@@ -413,6 +442,12 @@ class FancyReconstruct(Reconstruct):
             epitr = datastream[j].get_epoch_iterator()
             shape = next(epitr)[0].shape[-3:]
             _data = np.empty((k,nb_class,)+shape, dtype=np.float32)
+
+            # usefull for extra batch size above 100
+            if nb_extra_data > 0:
+                extras = np.empty((nb_extra_data,) + shape, dtype=np.float32)
+                extra_id = 0
+
             cl_accumulated = np.zeros(nb_class)
 
             for batches in epitr:
@@ -421,17 +456,28 @@ class FancyReconstruct(Reconstruct):
                     if cl_accumulated[target] < j*k + k:
                         _data[cl_accumulated[target]%k,target,...] = batches[0][i]
                         cl_accumulated[target] += 1
+
+                    elif nb_extra_data > 0 and extra_id < nb_extra_data:
+                        extras[extra_id] = batches[0][i]
+                        extra_id += 1
+
             data += [_data]
 
-        assert cl_accumulated.sum() == nb_class * 10
+        assert cl_accumulated.sum() == nb_class * 10, "Could not find 10 individual examples of each class"
         self.data = np.stack(data, axis=0)
+
+        if nb_extra_data > 0:
+            self.extra_data = extras
 
 
     def _do(self, network_move=False):
         print "Reconstructing..."
         data = self.data.reshape((10*self.nb_class,)+self.data.shape[-3:])
+        if hasattr(self, 'extra_data'):
+            data = np.concatenate([data, self.extra_data], axis=0)
+
         x, reconstructions = self.model.reconstruction_function(data)
-        self._do_save(x, reconstructions, network_move)
+        self._do_save(x[:100], reconstructions[:100], network_move, only_one_src=True)
 
 
 
