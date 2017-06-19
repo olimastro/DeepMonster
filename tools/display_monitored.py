@@ -15,11 +15,13 @@ def display(pklfile, request=['train_data_accuracy', 'train_sample_accuracy']) :
 
 def parse_requests(path) :
     #instance of OrderedDict
-    odict = pkl.load(open(path,'r'))
+    odict = OrderedDict(pkl.load(open(path,'r')))
+    display_dict = zip(range(len(odict.keys())), odict.keys())
     print
     print "There are the following keys in the pkl :"
-    print odict.keys()
-    print range(len(odict.keys()))
+    #print odict.keys()
+    #print range(len(odict.keys()))
+    print display_dict
     print
     figures = int(raw_input("How many figures would you like? >>> "))
     request = OrderedDict()
@@ -30,7 +32,7 @@ def parse_requests(path) :
         thisrequest = thisrequest.split(' ')
         request_as_listofstr = []
         for j in thisrequest :
-            request_as_listofstr += [odict.keys()[int(j)-1]]
+            request_as_listofstr += [display_dict[int(j)][1]]
         request.update({i : request_as_listofstr})
         print
 
