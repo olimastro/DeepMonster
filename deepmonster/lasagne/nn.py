@@ -1,7 +1,8 @@
 """
 neural network stuff, intended to be used with Lasagne
 
-All this code was written by openai taken from improvedgan repo on github
+All this code, except otherwise mentionned,
+was written by openai taken from improvedgan repo on github
 """
 
 import numpy as np

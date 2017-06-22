@@ -43,7 +43,7 @@ class Flatten(AbsLayer):
     def apply(self, x):
         assert x.ndim == 4 or x.ndim == 5
         outdim = 2 if x.ndim == 4 else 3
-        return T.flatten(x, outdim=outdim)
+        return T.flatten(x, ndim=outdim)
 
 
 
