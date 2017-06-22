@@ -84,8 +84,6 @@ class Experiment(SimpleExtension):
                 f.write('\n')
                 f.write(self.extra_infos)
                 f.write('\n')
-        else:
-            pass
 
 
     def save(self, obj, name, ext, append_time=False, network_move=False):
@@ -105,7 +103,6 @@ class Experiment(SimpleExtension):
             # this is more fancy stuff. obj is expected to be a np array at this point
             img = prepare_png(obj)
             imsave(tmp, img)
-            pass
 
         cmd = 'mv {} {}'.format(tmp, target)
         print "Doing:", cmd
@@ -348,8 +345,12 @@ class LogAndSaveStuff(FileHandlingExt):
                     {stuff : self.main_loop.log[epoch][stuff]})
 
         else :
-            path = self.exp_obj.local_path + self.exp_obj.exp_name + '_monitored.pkl'
-            f = open(path, 'r')
+            try:
+                path = self.exp_obj.local_path + self.exp_obj.exp_name + '_monitored.pkl'
+                f = open(path, 'r')
+            except IOError:
+                path = self.exp_obj.network_path + self.exp_obj.exp_name + '_monitored.pkl'
+                f = open(path, 'r')
             dictofstuff = pkl.load(f)
             f.close()
 
