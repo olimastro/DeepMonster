@@ -117,6 +117,18 @@ class Normalize_min1_1(Transformer):
         return [data]+list(batch[1:])
 
 
+class Normalize_01(Transformer):
+    # uint to 01
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('produces_examples', False)
+        super(Normalize_01, self).__init__(*args, **kwargs)
+
+    def transform_batch(self, batch):
+        data = batch[0].astype(np.float32)
+        data = data / 255.
+        return [data]+list(batch[1:])
+
+
 class InsertLabeledExamples(Transformer):
     def __init__(self, dataset, nb_class, nb_examples, examples_per_class, *args, **kwargs):
         norm01 = kwargs.pop('norm01', True)

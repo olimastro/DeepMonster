@@ -2,11 +2,12 @@ import fuel.datasets
 from fuel.schemes import SequentialScheme, ShuffledScheme
 from fuel.streams import DataStream
 
-from transformers import InsertLabeledExamples, CopyBatch, Normalize_min1_1, Float32
+from transformers import Normalize_01, Normalize_min1_1
 
 
+# NOTE: dataset can be a fuel dataset object, if it is a string it will try to fetch it
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
-                  normalization='01', ssl={}, load_in_memory=False, test=False):
+                  normalization=None, ssl={}, load_in_memory=False, test=False):
     get_dataset = {
         'mnist' : get_mnist,
         'cifar10' : get_cifar10,
@@ -20,12 +21,13 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
         'test' : SequentialScheme,
     }
 
-    assert normalization in [None, '01','-1+1']
-    assert dataset in ['mnist','cifar10','svhn','celeba']
+    assert normalization in [None, 'default', '01','-1+1']
     #TODO: more split
-    assert len(split) == 1
+    assert len(split) == 1, "NotImplemented more than 1 split"
+    if isinstance(dataset, str):
+        assert dataset in ['mnist','cifar10','svhn','celeba'], "Does not recognize name to fetch"
+        dataset = get_dataset[dataset](split, sources, load_in_memory)
 
-    dataset = get_dataset[dataset](split, sources, load_in_memory)
     if test:
         print "WARNING: Test flag at create_stream, loading stream with one batch_size"
         num_examples = batch_size
@@ -34,7 +36,7 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
     scheme = Scheme[split[0]](num_examples, batch_size)
 
     # this is a bit sloppy, cant assume that the default is a 01 normalization (so far it is)
-    if normalization == '01':
+    if normalization == 'default':
         stream = DataStream.default_stream(
             dataset=dataset,
             iteration_scheme=scheme)
@@ -43,12 +45,15 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
             DataStream(
                 dataset=dataset,
                 iteration_scheme=scheme))
-    else:
-        stream = Float32(
+    elif normalization == '01':
+        stream = Normalize_01(
             DataStream(
                 dataset=dataset,
                 iteration_scheme=scheme))
-
+    else:
+        stream = DataStream(
+            dataset=dataset,
+            iteration_scheme=scheme)
 
     if len(ssl) > 0:
         raise NotImplementedError('didnt implement ssl stream fetcher')
