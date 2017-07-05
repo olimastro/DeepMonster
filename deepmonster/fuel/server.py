@@ -11,7 +11,7 @@ def server_stream(dataset, split, batch_size, **kwargs):
        with fuel.server. It takes care of launching the subprocesses and returns
        the stream needed in the main script
 
-       kwargs := kwargs needed for the Dataset
+       kwargs := kwargs needed for the Dataset and fuel server setup
     """
     #TODO: allow more than 1 split!
     assert split in ['train', 'valid', 'test'], "split name error or NotImplemented more than 1 split"
@@ -19,22 +19,23 @@ def server_stream(dataset, split, batch_size, **kwargs):
         sources = kwargs.setdefault('sources', ('features',))
     else:
         sources = dataset.provides_sources
-    port = {
+
+    port = kwargs.pop('port',{
         'train': 5557,
         'valid': 5558,
-        'test': 5559,
-    }
+        'test': 5559,})
+    hwm = kwargs.pop('hwm', 10)
 
     p = Process(target=start_fuel_server, name='fuel_server',
-                args=(dataset, split, batch_size, port[split], kwargs))
+                args=(dataset, split, batch_size, port[split], hwm, kwargs))
     p.daemon = True
     p.start()
 
-    sdstream = ServerDataStream(sources, False, port=port[split])
+    sdstream = ServerDataStream(sources, False, port=port[split], hwm=hwm)
 
     return sdstream
 
 
-def start_fuel_server(dataset, split, batch_size, port, kwargs):
+def start_fuel_server(dataset, split, batch_size, port, hwm, kwargs):
     kwargs.update({'split': (split,)})
-    start_server(create_stream(dataset, batch_size, **kwargs), port=port)
+    start_server(create_stream(dataset, batch_size, **kwargs), port=port, hwm=hwm)
