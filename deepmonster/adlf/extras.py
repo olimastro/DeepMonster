@@ -6,8 +6,13 @@ from baselayers import AbsLayer, WrappedLayer
 
 class Reshape(AbsLayer):
     def __init__(self, shape, **kwargs):
-        # use None in shape to use an unknown in advance input shape
-        self.shape = shape
+        # mostly like lasagne
+        # use -1 to collapse everything else on axis
+        # use [i] on an element to put the original shape there
+        self.shape = tuple(shape)
+        if -1 in shape:
+            assert shape[0] == -1 or shape[-1] == -1
+            assert len(filter(lambda x: x == -1, shape)) == 1
         super(Reshape, self).__init__(**kwargs)
 
 
@@ -15,16 +20,23 @@ class Reshape(AbsLayer):
         self.input_dims = tup
         if len(self.shape) == 4:
             self.output_dims = self.shape[1:]
-        if len(self.shape) == 5:
+        elif len(self.shape) == 5:
             self.output_dims = self.shape[2:]
+        elif len(self.shape) in [2,3]:
+            self.output_dims = (self.shape[-1],)
+        for dim in self.output_dims:
+            if dim == -1 or isinstance(dim, list):
+                print "WARNING: Cannot safely infer output dims (channel, "+\
+                        "height, width) of reshape layer {}, ".format(self.prefix)+\
+                        "might crash if layer below depends on this."
 
 
     def apply(self, x):
         shape = []
         for i, shp in enumerate(self.shape):
-            if shp is None:
-                shape += [x.shape[i]]
-            else :
+            if isinstance(shp, list):
+                shape += [x.shape[shp[0]]]
+            else:
                 shape += [shp]
         return x.reshape(tuple(shape))
 
@@ -113,15 +125,16 @@ class AddConditioning(WrappedLayer):
 
 if __name__ == '__main__':
     import numpy as np
-    from simple import FullyConnectedLayer
+    #from convolution import ConvLayer5D as ConvLayer
 
-    x = T.ftensor4('x')
-    y = T.ivector('y')
-    lay = AddConditioning(FullyConnectedLayer(input_dims=25,output_dims=50),
-                           nb_class=5)
-    z = lay.fprop(x, y)
-    f = theano.function([x,y],[z])
-    npx = np.random.random((10,40,4,4)).astype(np.float32)
-    npy = np.asarray([1,1,1,3,3,3,4,4,2,2]).astype(np.int32)
-    out = f(npx,npy)
+    theano.config.compute_test_value = 'warn'
+    npx = np.random.random((10,32,128,1,1)).astype(np.float32)
+    ftensor5 = T.TensorType('float32', (False,)*5)
+    x = T.ftensor5('x')
+    x.tag.test_value = npx
+    lay = Reshape((-1,128,1,1))
+    y = lay.fprop(x)
+    f = theano.function([x],[y])
+    #out = f(npx,npy)
+    out = f(npx)
     import ipdb; ipdb.set_trace()
