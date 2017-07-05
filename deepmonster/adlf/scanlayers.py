@@ -6,7 +6,6 @@ import theano.tensor as T
 from baselayers import Layer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
-from normalizations import batch_norm
 
 
 class ScanLayer(Layer):
@@ -173,6 +172,24 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         LSTM implemented with the matrix being 4 times the dimensions so it can be sliced
         between the 4 gates.
     """
+    # small attribute reminder
+    def _get_activation(self):
+        return None
+    def _set_activation(self, value):
+        if value is not None:
+            raise AttributeError
+    activation = property(_get_activation, _set_activation)
+
+    def attribute_error(self, attr_name):
+        if attr_name == 'activation':
+            message = "trying to set an activation to " + \
+                    self.__class__.__name__ + ". Does nothing as " + \
+                    "LSTMs have gates hardcoded as sigmoid and tanh"
+        else:
+            message = 'default'
+        super(ScanLSTM, self).attribute_error(attr_name, message)
+
+
     def batch_norm_addparams(self):
         # 0.1 scaling as used in RNN BN paper
             self.param_dict.update({
@@ -291,9 +308,9 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
         clear and explicit to conv operation (such as num_filters) instead of output_dims
     """
     def __init__(self, filter_size, num_filters, **kwargs):
-        # strides is (1,1)
         ConvLayer.__init__(self, filter_size, num_filters, **kwargs)
         self.padding = 'half'
+        self.strides = (1,1)
 
 
     def batch_norm_addparams(self):
@@ -370,4 +387,62 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
 
 
 if __name__ == '__main__':
-    pass
+    from deepmonster.adlf.activations import LeakyRectifier
+    from deepmonster.adlf.extras import Flatten
+    from deepmonster.adlf.initializations import Initialization, Gaussian, Orthogonal
+    from deepmonster.adlf.network import Feedforward
+    from deepmonster.adlf.simple import FullyConnectedOnLastTime, FullyConnectedLayer
+    from deepmonster.adlf.rnn import ConvLSTM
+    time_size = 5
+    image_size = (15,15)
+    batch_size = 32
+    valid_batch_size = 128
+    channels = 3
+    leak = 0.2
+
+    lr = 1e-4
+    lr = theano.shared(np.float32(lr), name='learning_rate')
+
+    config = {
+        'batch_norm' : True,
+        'weight_norm' : False,
+        'use_bias' : True,
+        'activation' : LeakyRectifier(leak=leak),
+        'initialization' : Initialization({'W' : Gaussian(std=0.05),
+                                           'U' : Orthogonal(0.05)}),
+    }
+
+    layers = [
+        ConvLSTM(3, 16, strides=(1,1), padding='half', num_channels=channels, image_size=image_size),
+        FullyConnectedOnLastTime(output_dims=256),
+        Flatten(),
+        FullyConnectedLayer(output_dims=10)
+    ]
+    classifier = Feedforward(layers, 'classifier', **config)
+    classifier.initialize()
+
+
+    print "Init Model"
+    #theano.config.compute_test_value = 'warn'
+    ftensor5 = T.TensorType('float32', (False,)*5)
+    x = ftensor5('features')
+    #x.tag.test_value=np.random.random((time_size,batch_size,channels,32,32)).astype(np.float32)
+    y = T.imatrix('targets')
+
+    # train graph
+    preds = classifier.fprop(x, deterministic=False)
+    cost = T.nnet.categorical_crossentropy(preds, y.flatten()).mean()
+    cost.name = 'train_cost'
+    missclass = T.neq(T.argmax(preds, axis=1), y.flatten()).mean()
+    missclass.name = 'train_missclass'
+
+    # test graph
+    v_preds = classifier.fprop(x, deterministic=True)
+    v_missclass = T.neq(T.argmax(v_preds, axis=1), y.flatten()).mean()
+    v_missclass.name = 'valid_missclass'
+
+    xnp = np.random.random((time_size, batch_size, channels,)+image_size).astype(np.float32)
+    ynp = np.random.randint(0, 256, size=(batch_size, 1))
+    f = theano.function([x,y],[preds, missclass, v_missclass])
+    out = f(xnp, ynp)
+    import ipdb; ipdb.set_trace()

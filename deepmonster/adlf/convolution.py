@@ -9,7 +9,7 @@ from baselayers import Layer
 
 
 class ConvLayer(Layer) :
-    def __init__(self, filter_size, num_filters, strides=(1,1), padding='valid',
+    def __init__(self, filter_size, num_filters, strides=(1,1), padding=None,
                  tied_bias=True, image_size=None, num_channels=None,
                  **kwargs):
         super(ConvLayer, self).__init__(**kwargs)
@@ -19,7 +19,7 @@ class ConvLayer(Layer) :
         self.tied_bias = tied_bias
         self.num_filters = num_filters
         self.strides = utils.parse_tuple(strides, 2)
-        if not isinstance(padding, str):
+        if isinstance(padding, int):
             padding = utils.parse_tuple(padding, 2)
         self.padding = padding
 
@@ -46,7 +46,8 @@ class ConvLayer(Layer) :
         elif isinstance(border_mode, tuple):
             border_mode = border_mode[0]
         else:
-            raise TypeError("Does not recognize padding type {} in {}".format(self.padding,self.prefix))
+            raise TypeError("Does not recognize padding type {} in {}".format(
+                self.padding,self.prefix))
         o_dim = (i_dim + 2 * border_mode - k_dim) // s_dim + 1
 
         self.feature_size = (o_dim, o_dim)

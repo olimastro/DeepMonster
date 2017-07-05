@@ -1,6 +1,7 @@
 import inspect
 
 import utils
+from activations import Identity
 from baselayers import RecurrentLayer
 from convolution import ConvLayer, DeConvLayer
 from scanlayers import ScanConvLSTM, ScanLSTM
@@ -25,7 +26,7 @@ class TypicalReccurentLayer(RecurrentLayer):
         super(TypicalReccurentLayer, self).__init__(*args, mode=mode)
         self.upwardlayer.use_bias = False
         self.upwardlayer.batch_norm = False
-        self.upwardlayer.activation = None
+        self.upwardlayer.activation = Identity()
 
 
     def popkwargs(self, upwardlayer, kwargs):

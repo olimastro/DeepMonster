@@ -116,9 +116,12 @@ class RandomLayer(AbsLayer):
 class Layer(AbsLayer):
     """
         Layer class with initializable parameters and possible normalizations
+
+        All kwargs should be None for reasons explaned in method set_attributes.
+        Design choices exceptions: use_bias and attr_error_tolerance.
     """
     def __init__(self, attr_error_tolerance='warn', initialization=Initialization({}),
-                 prefix=None, use_bias=None, batch_norm=None, activation=None,
+                 prefix=None, use_bias=True, batch_norm=None, activation=None,
                  weight_norm=None, train_g=None, **kwargs):
         super(Layer, self).__init__(**kwargs)
 
@@ -136,7 +139,13 @@ class Layer(AbsLayer):
 
     def set_attributes(self, dict_of_hyperparam) :
         """
-            TODO: explain this
+            The Layer class works in tandem with the Feedforward class. When a FF
+            class is instanciated, it will call set_attributes on its list of
+            layers. It will pass a set of kwargs to each layer in the list.
+            The main feature here follows a simple rule: If a Layer was instanciated
+            with an explicit keyword, it will preserve this keyword value. If
+            not, this method will try to set it from the set of kwargs given
+            to the FF instance.
         """
         for attr_name, attr_value in dict_of_hyperparam.iteritems() :
             # if attr_name is set to a layer, it will keep that layer's attr_value
@@ -251,9 +260,10 @@ class Layer(AbsLayer):
         return preact
 
 
-    def attribute_error(self, attr_name):
-        message = "trying to set layer "+ self.__class__.__name__ + \
-                " with attribute " + attr_name
+    def attribute_error(self, attr_name, message='default'):
+        if message == 'default':
+            message = "trying to set layer "+ self.__class__.__name__ + \
+                    " with attribute " + attr_name
         if self.attr_error_tolerance is 'warn' :
             print "WARNING:", message
         elif self.attr_error_tolerance is 'raise' :
