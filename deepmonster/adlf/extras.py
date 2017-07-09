@@ -59,6 +59,23 @@ class Flatten(AbsLayer):
 
 
 
+class Dimshuffle(AbsLayer):
+    def __init__(self, *args, **kwargs):
+        self.shape = tuple(args)
+        super(Dimshuffle, self).__init__(**kwargs)
+
+
+    def set_io_dims(self, tup):
+        print "WARNING: DimshuffleLayer doesn't implement " +\
+                "shape prop yet, use at own risk"
+        super(Dimshuffle, self).set_io_dims(tup)
+
+
+    def apply(self, x):
+        return x.dimshuffle(*self.shape)
+
+
+
 class SpatialMean(AbsLayer):
     def set_io_dims(self, tup):
         self.input_dims = tup

@@ -46,8 +46,9 @@ class ConvLayer(Layer) :
         elif isinstance(border_mode, tuple):
             border_mode = border_mode[0]
         else:
-            raise TypeError("Does not recognize padding type {} in {}".format(
-                self.padding,self.prefix))
+            raise ValueError("Does not recognize padding {} in {}".format(
+                self.padding, self.prefix))
+        self._border_mode = utils.parse_tuple(border_mode, 2)
         o_dim = (i_dim + 2 * border_mode - k_dim) // s_dim + 1
 
         self.feature_size = (o_dim, o_dim)
@@ -147,6 +148,115 @@ class DeConvLayer(ConvLayer) :
 
 
 
+class Conv3DLayer(ConvLayer) :
+    """
+        This class could be easy, but nothing is easy in life.
+        The theano op is implemented in bct01 and this whole library has been
+        written in tbc01. The major work of this class will be to accomodate
+        for this annoyance.
+
+        If dimshuffle_inp == True: assume the input is in tbc01 and we have to
+        shuffle it.
+        If dimshuffle_inp == False: assume it comes in bct01.
+        If using a stack of Conv3D it is better to only dimshuffle twice
+        at the io of the stack for memory and comp usage.
+    """
+    def __init__(self, filter_size, num_filters, dimshuffle_inp=False, **kwargs):
+        # a bit of fooling around to use ConvLayer.__init__
+        time_filter_size, filter_size = self._seperate_time_from_spatial(filter_size)
+        strides = kwargs.pop('strides', (1,1,1))
+        time_stride, strides = self._seperate_time_from_spatial(strides)
+        super(Conv3DLayer, self).__init__(filter_size, num_filters, strides=strides, **kwargs)
+        self.time_filter_size = time_filter_size
+        self.time_stride = time_stride
+        self.dimshuffle_inp = dimshuffle_inp
+
+
+    def _seperate_time_from_spatial(self, tup):
+        if isinstance(tup, tuple):
+            time = tup[0]
+            space = tup[1:]
+        else:
+            time = tup
+            space = utils.parse_tuple(tup, 2)
+        return (time,), space
+
+
+    def param_dict_initialization(self):
+        if self.tied_bias :
+            biases_dim = (self.num_filters,)
+        else :
+            biases_dim = self.output_dims
+
+        dict_of_init = {
+            'W' : [(self.num_filters, self.num_channels) + \
+                   self.time_filter_size + self.filter_size,
+                   'norm', 0.1]}
+
+        if self.use_bias or self.batch_norm :
+            dict_of_init.update({
+                'betas' : [biases_dim, 'zeros'],
+        })
+        self.param_dict = dict_of_init
+
+
+    def apply_bias(self, x):
+        if self.tied_bias:
+            return x + self.betas.dimshuffle(
+                'x', 0, 'x', 'x', 'x')
+        else:
+            return x + self.betas.dimshuffle(
+                'x', 0, 'x', 1, 2)
+
+
+    def apply(self, x):
+        subsample = self.time_stride + self.strides
+        # never pad time
+        border_mode = (0,) + self._border_mode
+        out = T.nnet.conv3d(x, self.W,
+                            border_mode=border_mode,
+                            subsample=subsample,
+                            filter_flip=False)
+        return out
+
+
+    def fprop(self, x, **kwargs):
+        # all this class assumes bct01
+        if self.dimshuffle_inp:
+            x = x.dimshuffle(1,2,0,3,4)
+        out = super(Conv3DLayer, self).fprop(x, **kwargs)
+        if self.dimshuffle_inp:
+            out = out.dimshuffle(2,0,1,3,4)
+        return out
+
+
+    def bn(self, x, betas, gammas, key='', deterministic=False):
+        pattern = ('x', 0, 'x', 'x', 'x')
+        axis = [0, 2, 3, 4]
+        mean = x.mean(axis=axis, keepdims=True)
+        if not self.bn_mean_only :
+            var = T.mean(T.sqr(x - mean), axis=axis, keepdims=True)
+        else :
+            var = theano.tensor.ones_like(mean)
+        var_corrected = var + 1e-6
+
+        if betas == 0 :
+            pass
+        elif betas.ndim == 1:
+            betas = betas.dimshuffle(pattern)
+        elif betas.ndim == 3:
+            betas = betas.dimshuffle(
+                'x', 0, 'x', 1, 2)
+
+        if gammas == 1:
+            pass
+        else:
+            gammas = gammas.dimshuffle(pattern)
+
+        std = T.sqrt(var_corrected)
+        return ((x - mean) / std) * gammas + betas
+
+
 # Utilities classes to enable convlayers on a 5D tensors by surrounding their
 # fprop by reshapes. Collapse batch and time axis together
 
@@ -165,3 +275,46 @@ class ConvLayer5D(ConvLayer):
 # according to the MRO the only thing it inherits from ConvLayer5D is the fprop
 class DeConvLayer5D(ConvLayer5D, DeConvLayer):
     pass
+
+
+
+if __name__ == "__main__":
+    from extras import Dimshuffle
+    from network import Feedforward
+    from utils import getftensor5
+
+    image_size = (32,32)
+    channels = 3
+    time_size = 7
+    batch_size = 10
+
+    ftensor5 = getftensor5()
+    x = ftensor5('x')
+    npx = np.random.random(
+        (time_size, batch_size, channels,)+image_size).astype(np.float32)
+
+    layers = [
+        Dimshuffle(1,2,0,3,4),
+        Conv3DLayer(3, 16, padding='half', num_channels=channels,
+                    image_size=image_size),
+        #Conv3DLayer(3, 32, padding='half', strides=(1,2,2)),
+        #Dimshuffle(2,0,1,3,4),
+    ]
+    config = {
+        'batch_norm': True,}
+
+    net = Feedforward(layers, 'conv3d', **config)
+    net.initialize()
+
+    y = net.fprop(x)
+    cost = (y.mean() - 1.)**2
+    print theano.printing.debugprint(y)
+    import ipdb; ipdb.set_trace()
+    from collections import OrderedDict
+    grads = OrderedDict()
+    grads.update(zip(net.params,
+                     theano.grad(cost,
+                                 net.params)))
+    f = theano.function([x],[cost])
+
+    print f(npx)[0]

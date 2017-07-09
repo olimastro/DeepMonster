@@ -87,7 +87,7 @@ initialization_method = {
 
 class Initialization(object):
     """
-        The goal of the Initilization object is to support different
+        The goal of the Initialization object is to support different
         initilization scheme for different variables when constructing
         a layer object. It should support legacy way of doing it
     """

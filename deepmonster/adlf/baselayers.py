@@ -210,7 +210,7 @@ class Layer(AbsLayer):
             Why a method even for this?? Because for example convolution
             can change this application if the bias is tied!
         """
-        pattern = list(('x',) * x.ndim)
+        pattern = ['x'] * x.ndim
         if x.ndim in [3, 5]:
             # tbc or tbc01
             i = 2
