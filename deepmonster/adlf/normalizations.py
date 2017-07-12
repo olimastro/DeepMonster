@@ -16,17 +16,21 @@ def weight_norm(layer, train_g=None):
     try:
         weight_tag = 'W' if hasattr(layer, 'W') else 'U'
     except AttributeError:
-        raise AttributeError("Trying to call weight norm on {} without layer.W or layer.U defined".format(layer))
+        raise AttributeError("Trying to call weight norm on {} ".format(layer)+\
+                             "without layer.W or layer.U defined")
     weights = getattr(layer, weight_tag)
 
     Wndim = weights.get_value().ndim
     if Wndim == 4:
         W_axes_to_sum = (1,2,3)
         W_dimshuffle_args = (0,'x','x','x')
+    elif Wndim == 5:
+        W_axes_to_sum = (1,2,3,4)
+        W_dimshuffle_args = (0,'x','x','x','x')
     # a bit sketch but serves our purpose for the LSTM weights
-    elif weight_tag == 'U' and Wndim == 2:
-        W_axes_to_sum = 1
-        W_dimshuffle_args = (0,'x')
+    #elif weight_tag == 'U' and Wndim == 2:
+    #    W_axes_to_sum = 1
+    #    W_dimshuffle_args = (0,'x')
     elif Wndim == 3 :
         raise NotImplementedError("What is a weight with 3 dimensions?")
     else :

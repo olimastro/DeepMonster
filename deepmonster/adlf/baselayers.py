@@ -397,6 +397,7 @@ class RecurrentLayer(AbsLayer):
         self.mode = mode
         self.upwardlayer = upwardlayer
         self.scanlayer = scanlayer
+        self.time_collapse = True
 
     @property
     def prefix(self):
@@ -483,9 +484,8 @@ class RecurrentLayer(AbsLayer):
 
         if x.ndim in [2, 4]:
             assert mode == 'out2in'
-        # collapse batch and time together
-        # TODO: modify this so the collapse is optional
-        if x.ndim == 5:
+        if self.time_collapse and x.ndim == 5:
+            # collapse batch and time together
             in_up  = x.reshape((x.shape[0]*x.shape[1],x.shape[2],x.shape[3],x.shape[4]))
         else:
             in_up = x
@@ -518,8 +518,9 @@ class RecurrentLayer(AbsLayer):
             y = self.scanlayer.after_scan(scanout[0], scanout[1])
 
         elif mode == 'scan':
-            tup = (h.shape[-1],) if x.ndim == 3 else (h.shape[-3],h.shape[-2],h.shape[-1])
-            h = h.reshape((x.shape[0], x.shape[1],)+tup)
+            if self.time_collapse:
+                tup = (h.shape[-1],) if x.ndim == 3 else (h.shape[-3],h.shape[-2],h.shape[-1])
+                h = h.reshape((x.shape[0], x.shape[1],)+tup)
             y = self.scanlayer.apply(h, **kwargs)
 
         return y

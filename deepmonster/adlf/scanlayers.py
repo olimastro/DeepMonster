@@ -203,7 +203,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
     def param_dict_initialization(self):
         # default 0.1 scaling on U, if higher more chances of exploding gradient
         dict_of_init = {
-            'U' : [(4*self.output_dims[0], self.input_dims[0]), 'orth', 0.1],
+            'U' : [(self.input_dims[0], 4*self.output_dims[0]), 'orth', 0.1],
             'xh_betas' : [(4*self.output_dims[0],), 'zeros'],
             'h0' : [(self.output_dims[0],), 'zeros'],
             'c0' : [(self.output_dims[0],), 'zeros'],
@@ -213,14 +213,16 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
     def initialize(self):
         super(ScanLSTM, self).initialize()
-        ### Forget gate biais init to 1
-        forget_biais = self.xh_betas.get_value()
-        forget_biais[self.output_dims[0]:2*self.output_dims[0]] = 1.
-        self.xh_betas.set_value(forget_biais)
+        ### Forget gate bias init to 1
+        forget_bias = self.xh_betas.get_value()
+        forget_bias[self.output_dims[0]:2*self.output_dims[0]] = 1.
+        self.xh_betas.set_value(forget_bias)
 
 
     def op(self, h, U):
-        preact = T.dot(h.flatten(2), U.flatten(2).dimshuffle(1,0))
+        if h.ndim > 2 :
+            h = h.flatten(2)
+        preact = T.dot(h, U)
         return preact
 
 
@@ -295,6 +297,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
     def after_scan(self, scanout, updates):
         scanout = super(ScanLSTM, self).after_scan(scanout, updates)
+        # only return h
         return scanout[0]
 
 
