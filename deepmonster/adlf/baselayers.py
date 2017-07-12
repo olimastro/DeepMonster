@@ -392,12 +392,12 @@ class RecurrentLayer(AbsLayer):
         NOTE: It should be possible to use a non scanlayer for the time application, in this
         case if no step is implemented, this class will call the fprop of that layer.
     """
-    def __init__(self, upwardlayer, scanlayer, mode='auto'):
+    def __init__(self, upwardlayer, scanlayer, mode='auto', time_collapse=True):
         assert mode in ['scan', 'out2in', 'auto']
         self.mode = mode
         self.upwardlayer = upwardlayer
         self.scanlayer = scanlayer
-        self.time_collapse = True
+        self.time_collapse = time_collapse
 
     @property
     def prefix(self):

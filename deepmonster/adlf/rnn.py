@@ -23,7 +23,8 @@ class TypicalReccurentLayer(RecurrentLayer):
     """
     def __init__(self, *args, **kwargs):
         mode = kwargs.pop('mode', 'auto')
-        super(TypicalReccurentLayer, self).__init__(*args, mode=mode)
+        time_collapse = kwargs.pop('time_collapse', True)
+        super(TypicalReccurentLayer, self).__init__(*args, mode=mode, time_collapse=time_collapse)
         self.upwardlayer.use_bias = False
         self.upwardlayer.batch_norm = False
         self.upwardlayer.activation = Identity()
