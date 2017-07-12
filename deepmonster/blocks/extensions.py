@@ -13,7 +13,13 @@ from blocks.graph import ComputationGraph
 from blocks.utils import dict_subset
 
 
-class Experiment(SimpleExtension):
+class EpochExtension(SimpleExtension):
+    @property
+    def epoch(self):
+        return self.main_loop.status['epochs_done']
+
+
+class Experiment(EpochExtension):
     """
         This class is intended to do all the savings and bookeeping required
     """
@@ -38,11 +44,6 @@ class Experiment(SimpleExtension):
         self.network_path = network_path if network_path is None else network_path + name + '/'
         self.host = socket.gethostname()
         self.extra_infos = extra_infos
-
-
-    @property
-    def epoch(self):
-        return self.main_loop.status['epochs_done']
 
 
     def _manage_files(self, path, crush_old_cond):
@@ -125,7 +126,7 @@ class Experiment(SimpleExtension):
 
 
 
-class FileHandlingExt(SimpleExtension):
+class FileHandlingExt(EpochExtension):
     """
         This extension is made to interact with the experiment extension.
         Any subclass of this one will dump its files to the experiment one
@@ -152,7 +153,6 @@ class FileHandlingExt(SimpleExtension):
             else:
                 self.full_dump = -1 if self._full_dump is False else self._full_dump
 
-        self.epoch = self.main_loop.status['epochs_done']
         if self.full_dump != -1 and self.epoch % self.full_dump == 0:
             self._do_full_dump()
         else:
@@ -171,14 +171,37 @@ class FileHandlingExt(SimpleExtension):
 
 class SaveExperiment(FileHandlingExt):
     def __init__(self, parameters, save_optimizer=True,
-                 on_best=False, new_copy=False, **kwargs) :
+                 on_best=False, original_save=False, **kwargs) :
         super(SaveExperiment, self).__init__(**kwargs)
 
         self.parameters = parameters
         self.save_optimizer = save_optimizer
         self.on_best = on_best
         self.best_val = np.inf
-        self.new_copy = new_copy
+
+        self.original_save = original_save if original_save == False else True
+        # if original_save is not False, it has to be either a list of epochs to
+        # trigger an original_save, an int to do a modulo trigger or if True then
+        # it will *always* trigger one. (does the same thing if it is 1)
+        # fancy idea: accept a mix of list and int (possibly in a dict)
+        if self.original_save:
+            assert isinstance(original_save, list) or isinstance(original_save, int) or \
+                    original_save == True, "original_save of SaveExperiment should be in " +\
+                    "[list, int, True]"
+            self.freq_org_save = original_save
+
+
+    def isoriginal(self):
+        if self.original_save:
+            if isinstance(self.freq_org_save, list):
+                if self.epoch in self.freq_org_save:
+                    return True
+            elif isinstance(self.freq_org_save, int):
+                if self.epoch % self.freq_org_save:
+                    return True
+            elif self.freq_org_save == True:
+                return True
+        return False
 
 
     def _save_parameters(self, prefix='', network_move=False):
@@ -188,8 +211,9 @@ class SaveExperiment(FileHandlingExt):
             model_params.update(
                 {param.name : param.get_value()})
 
+        append_time = self.isoriginal()
         self.exp_obj.save(model_params, prefix + 'parameters', 'pkl',
-                          append_time=self.new_copy, network_move=network_move)
+                          append_time=append_time, network_move=network_move)
 
 
     def _save_optimizer(self, prefix='', network_move=False):
@@ -233,8 +257,6 @@ class SaveExperiment(FileHandlingExt):
         # and with the main_loop infos so everything can be resumed properly
         self._save_parameters(network_move=True)
         self._save_optimizer(network_move=True)
-        #pkl.dump(getattr(self.main_loop, 'status'), open(self.path + '_main_loop_status.pkl', 'w'))
-        #pkl.dump(getattr(self.main_loop, 'log'), open(self.path + '_main_loop_log.pkl', 'w'))
         self.exp_obj.save(getattr(self.main_loop, 'log'), 'main_loop_log', 'pkl', network_move=True)
 
 
@@ -312,6 +334,11 @@ def load_parameters(path, parameters) :
         param_was_assigned = False
         for param in parameters:
             if param.name == sparam:
+                if param.get_value().shape != saved_parameters[sparam].shape:
+                    raise ValueError("Shape mismatch while loading parameters between "+\
+                                     "{} of shape {} trying to load {} of shape {}".format(
+                                         param.name, param.get_value().shape,
+                                         sparam, saved_parameters[sparam].shape))
                 param.set_value(saved_parameters[sparam])
                 param_was_assigned = True
                 break
@@ -333,8 +360,8 @@ class LogAndSaveStuff(FileHandlingExt):
 
 
     def _do(self, network_move=False) :
-        #import ipdb ; ipdb.set_trace()
         # the log wont be done yet
+        # this is actually the iteration, not the epoch
         epoch = self.main_loop.status['_epoch_ends'][-1]
 
         if len(self.main_loop.status['_epoch_ends']) == 1 :
@@ -431,7 +458,8 @@ class FancyReconstruct(Reconstruct):
         # infer batch size and assert there are targets
         dumzie = next(datastream[0].get_epoch_iterator())
         assert len(dumzie) == 2, "FancyReconstruct need targets, could not find"
-        assert dumzie[0].shape[0] >= nb_class * 10, "Cannot use FancyReconstruct extension with smaller batch size than 10 * nb_class"
+        assert dumzie[0].shape[0] >= nb_class * 10,"Cannot use FancyReconstruct "+\
+                "extension with smaller batch size than 10 * nb_class"
         nb_extra_data = dumzie[0].shape[0] - 100
 
         k = 10/len(datastream)
@@ -464,7 +492,8 @@ class FancyReconstruct(Reconstruct):
 
             data += [_data]
 
-        assert cl_accumulated.sum() == nb_class * 10, "Could not find 10 individual examples of each class"
+        assert cl_accumulated.sum() == nb_class * 10, "Could not find 10 indi"+\
+                "vidual examples of each class"
         self.data = np.stack(data, axis=0)
 
         if nb_extra_data > 0:
@@ -488,23 +517,30 @@ class FrameGen(FileHandlingExt):
 
         self.model = model
         self.datastream = datastream #fuel object
-        self.epitr = datastream.get_epoch_iterator()
 
 
     def _do(self, network_move=False):
         print "Frame Generation..."
 
-        # reset the epoch iterator every now and then
-        if self.count % 10 == 0:
-            self.epitr = self.datastream.get_epoch_iterator()
-        samples = self.model.sampling_function(next(self.epitr))
+        epitr = self.datastream.get_epoch_iterator()
+        while True:
+            if np.random.randint(0,1):
+                continue
+            else:
+                try:
+                    batch = next(epitr)
+                    break
+                except StopIteration:
+                    epitr = self.datastream.get_epoch_iterator()
+
+        samples = self.model.sampling_function(batch)
 
         self.exp_obj.save(samples, 'samples', 'npz', append_time=True,
                           network_move=network_move)
 
 
 
-class AdjustSharedVariable(SimpleExtension):
+class AdjustSharedVariable(EpochExtension):
     def __init__(self, shared_dict, **kwargs):
         super(AdjustSharedVariable, self).__init__(**kwargs)
         # shared_dict is a dictionnary with the following mapping :
@@ -516,8 +552,7 @@ class AdjustSharedVariable(SimpleExtension):
     def do(self, which_callback, *args) :
         for shared, func in self.shared_dict.iteritems() :
             current_val = shared.get_value()
-            epoch = self.main_loop.status['epochs_done']
-            shared.set_value(func(epoch, current_val))
+            shared.set_value(func(self.epoch, current_val))
 
 
 
