@@ -12,6 +12,8 @@ def server_stream(dataset, split, batch_size, **kwargs):
        the stream needed in the main script
 
        kwargs := kwargs needed for the Dataset and fuel server setup
+       You can include a list of simple transformer object to wrap the main stream you
+       wish included in the server call. Their constructor has to be argumentless.
     """
     #TODO: allow more than 1 split!
     assert split in ['train', 'valid', 'test'], "split name error or NotImplemented more than 1 split"
@@ -25,9 +27,11 @@ def server_stream(dataset, split, batch_size, **kwargs):
         'valid': 5558,
         'test': 5559,})
     hwm = kwargs.pop('hwm', 10)
+    wrapping_streams = kwargs.pop('wrapping_streams', [])
 
     p = Process(target=start_fuel_server, name='fuel_server',
-                args=(dataset, split, batch_size, port[split], hwm, kwargs))
+                args=(dataset, split, batch_size, port[split],
+                      hwm, wrapping_streams, kwargs))
     p.daemon = True
     p.start()
 
@@ -36,6 +40,10 @@ def server_stream(dataset, split, batch_size, **kwargs):
     return sdstream
 
 
-def start_fuel_server(dataset, split, batch_size, port, hwm, kwargs):
+def start_fuel_server(dataset, split, batch_size, port, hwm, wrapping_streams, kwargs):
     kwargs.update({'split': (split,)})
-    start_server(create_stream(dataset, batch_size, **kwargs), port=port, hwm=hwm)
+    stream = create_stream(dataset, batch_size, **kwargs)
+    for wrap in wrapping_streams:
+        stream = wrap(stream)
+    start_server(stream, port=port, hwm=hwm)
+

@@ -5,9 +5,21 @@ from fuel.schemes import SequentialScheme, ShuffledScheme
 from random import shuffle
 
 
-class UpsampleToShape(Transformer):
-    def __init__(self, shape, *args, **kwargs):
+
+class DefaultTransformer(Transformer):
+    def __init__(self, *args, **kwargs):
         kwargs.setdefault('produces_examples', False)
+        super(DefaultTransformer, self).__init__(*args, **kwargs)
+        self.messaged = False
+
+    def trigger_warning(self, msg):
+        if not self.messaged:
+            print "WARNING: {}: {}".format(self.__class__, msg)
+            self.messaged = True
+
+
+class UpsampleToShape(DefaultTransformer):
+    def __init__(self, shape, *args, **kwargs):
         super(UpsampleToShape, self).__init__(*args, **kwargs)
         self.outshp = shape
 
@@ -53,22 +65,17 @@ class UpsampleToShape(Transformer):
         pass
 
 
-class Float32(Transformer):
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault('produces_examples', False)
-        super(Float32, self).__init__(*args, **kwargs)
-
+class Float32(DefaultTransformer):
     def transform_batch(self, batch):
         data = batch[0].astype(np.float32)
         return [data]+list(batch[1:])
 
 
-class RemoveDtsetMean(Transformer):
+class RemoveDtsetMean(DefaultTransformer):
     """
         Removes dataset mean from all members of the dataset. Used in vgg ( *old* no batch norm model)
     """
     def __init__(self, *args, **kwargs):
-        kwargs.setdefault('produces_examples', False)
         axis = kwargs.pop('axis', 1)
         super(RemoveDtsetMean, self).__init__(*args, **kwargs)
         mean = 0 ; i = 0.
@@ -93,40 +100,87 @@ class RemoveDtsetMean(Transformer):
         return [data]+list(batch[1:])
 
 
-class From01tomin11(Transformer):
+class From01tomin11(DefaultTransformer):
     # 01 to -1+1
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault('produces_examples', False)
-        super(From01tomin11, self).__init__(*args, **kwargs)
-
     def transform_batch(self, batch):
         data = batch[0]
         data = data*2. - 1.
         return [data]+list(batch[1:])
 
 
-class Normalize_min1_1(Transformer):
+class Normalize_min1_1(DefaultTransformer):
     # uint to -1+1
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault('produces_examples', False)
-        super(Normalize_min1_1, self).__init__(*args, **kwargs)
-
     def transform_batch(self, batch):
         data = batch[0].astype(np.float32)
         data = (data - 127.5) / 127.5
         return [data]+list(batch[1:])
 
 
-class Normalize_01(Transformer):
+class Normalize_01(DefaultTransformer):
     # uint to 01
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault('produces_examples', False)
-        super(Normalize_01, self).__init__(*args, **kwargs)
-
     def transform_batch(self, batch):
         data = batch[0].astype(np.float32)
         data = data / 255.
         return [data]+list(batch[1:])
+
+
+class OpticalFlow(DefaultTransformer):
+    def __init__(self, *args, **kwargs):
+        from cv2 import calcOpticalFlowFarneback as computeof
+        self.computeof = computeof
+        two_stream_format = kwargs.pop('two_stream_format', 10)
+        super(OpticalFlow, self).__init__(*args, **kwargs)
+
+        if two_stream_format != False:
+            assert isinstance(two_stream_format, int), "two_stream_format is not False, "+\
+                    "expecting an int for amount of flow to compute from a random frame"
+        else:
+            #TODO:
+            raise NotImplementedError("Did not implement another format than the two-stream one")
+        self.two_stream_format = two_stream_format
+        sources = self.sources
+        assert sources[0] == 'features'
+        self.sources = (sources[0],) + ('flow',) + sources[1:]
+
+
+    def transform_batch(self, batch):
+        data = batch[0]
+        if data.ndim != 5:
+            raise TypeError("OpticalFlow wants tbc01 and got shape of {}".format(data.shape))
+
+        if not 'float' in str(data.dtype):
+            data = data.astype(np.float32)
+
+        # infer if it is 01 or -1+1 norm
+        # bring it back to 255
+        if np.min(data) < 0.:
+            data = (data*2. - 1.) * 255.
+        elif 'int' in str(batch[0].dtype):
+            # treat int as if it were a uint
+            data = data / 255.
+        elif np.max(abs(data)) > 1.:
+            # this should not even happen
+            data = 255. * (data / np.max(abs(data)))
+            msg = "found a wierd normalization, will try to put "+\
+                    "it in [0, 255] range but not sure the flow will be right"
+            self.trigger_warning(msg)
+
+        # take mean and uintify, tbc01, flow wants grayscale
+        data = data.mean(axis=2).astype('uint8')
+
+        if self.two_stream_format != False:
+            flows = np.empty((data.shape[1], data.shape[2],
+                             data.shape[3], 2 * self.two_stream_format), dtype=np.float32)
+            new_data = np.empty(batch[0].shape[1:], dtype=np.float32)
+            for b in range(data.shape[1]):
+                rf_id = np.random.randint(0, data.shape[0] - self.two_stream_format)
+                new_data[b] = batch[0][rf_id,b,...]
+
+                for i in range(0, 2 * self.two_stream_format, 2):
+                    flow = self.computeof(data[i,b], data[i+1,b], None, 0.5, 3, 15, 3, 5, 1.2, 0)
+                    flows[b,...,i:i+2] = flow
+
+            return [new_data, flows.transpose(0,3,1,2)] + list(batch[1:])
 
 
 class InsertLabeledExamples(Transformer):
