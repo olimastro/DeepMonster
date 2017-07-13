@@ -108,16 +108,21 @@ class From01tomin11(DefaultTransformer):
         return [data]+list(batch[1:])
 
 
-class Normalize_min1_1(DefaultTransformer):
-    # uint to -1+1
+class AssertDataType(DefaultTransformer):
+    def __init__(self, *args, **kwargs):
+        super(AssertDataType, self).__init__(*arg, **kwargs)
+        data = next(self.data_stream.get_epoch_iterator())[0]
+        assert data.dtype == np.uint8, "Cannot use transformer, dtype is not uint8"
+
+
+class Normalize_min1_1(AssertDataType):
     def transform_batch(self, batch):
         data = batch[0].astype(np.float32)
         data = (data - 127.5) / 127.5
         return [data]+list(batch[1:])
 
 
-class Normalize_01(DefaultTransformer):
-    # uint to 01
+class Normalize_01(AssertDataType):
     def transform_batch(self, batch):
         data = batch[0].astype(np.float32)
         data = data / 255.

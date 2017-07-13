@@ -7,7 +7,7 @@ from transformers import Normalize_01, Normalize_min1_1
 
 # NOTE: dataset can be a fuel dataset object, if it is a string it will try to fetch it
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
-                  normalization=None, ssl={}, load_in_memory=False, test=False):
+                  normalization='default', ssl={}, load_in_memory=False, test=False):
     get_dataset = {
         'mnist' : get_mnist,
         'cifar10' : get_cifar10,
@@ -35,7 +35,6 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
         num_examples = (dataset.num_examples // batch_size) * batch_size
     scheme = Scheme[split[0]](num_examples, batch_size)
 
-    # this is a bit sloppy, cant assume that the default is a 01 normalization (so far it is)
     if normalization == 'default':
         stream = DataStream.default_stream(
             dataset=dataset,
