@@ -1,4 +1,5 @@
 import inspect
+import theano.tensor as T
 
 
 class Feedforward(object):
@@ -35,6 +36,10 @@ class Feedforward(object):
         set_attr = kwargs.pop('set_attr', True)
         if set_attr :
             self.set_attributes()
+
+        # would be useful but try to not break all the scripts
+        #if not kwargs.pop('no_init', False):
+        #    self.initialize()
 
 
     def __getattribute__(self, name):
@@ -127,7 +132,14 @@ class Feedforward(object):
         for keyword in kwargs.keys():
             if keyword not in layer.accepted_kwargs_fprop:
                 kwargs.pop(keyword)
-        y = layer.fprop(self.activations_list[-1], **kwargs)
+
+        if self.concatenation_tags.has_key(i):
+            _input = T.concatenate([self.activations_list[-1]] +
+                                   self.concatenation_tags[i][0],
+                                   axis=self.concatenation_tags[i][1])
+        else:
+            _input = self.activations_list[-1]
+        y = layer.fprop(_input, **kwargs)
         self.activations_list.append(y)
 
 
@@ -145,6 +157,25 @@ class Feedforward(object):
             output_id : will return this index, can use 'all' for returning the whole list
             pass_name : if defined, will update the fprop_passes dict with {pass_name : activations_list}
         """
+        # standarize the dict with {id of layer to inject input :
+        # (list of tensors to concat, which axis)}
+        concatenation_tags = kwargs.pop('concatenation_tags', {})
+        assert all([isinstance(k, int) for k in concatenation_tags.keys()])
+        for key, val in concatenation_tags.iteritems():
+            if not (isinstance(val, list) or isinstance(val, tuple)) or not isinstance(val[1], int):
+                val = [val, None]
+            else:
+                assert len(val) == 2
+            if not isinstance(val[0], list):
+                val = [[val[0]], val[1]]
+            assert len(set([v.ndim for v in val[0]])) == 1, "A list of tensors " +\
+                    "to concat was given but not all have same dim"
+            if val[1] is None:
+                # default on the channel axis
+                ndim = val[0][0].ndim
+                val[1] = ndim - 3 if ndim in [4, 5] else ndim - 1
+            concatenation_tags[key] = tuple(val)
+        self.concatenation_tags = concatenation_tags
 
         self.activations_list = [x]
         self._fprop(**kwargs)
@@ -152,6 +183,7 @@ class Feedforward(object):
         if len(pass_name) > 0:
             self.fprop_passes.update({pass_name : self.activations_list})
 
+        del self.concatenation_tags
         if output_id == 'all':
             return self.activations_list[1:]
         else:
@@ -162,6 +194,7 @@ class Feedforward(object):
         self._outputs_info = []
         self._get_outputs_info(*args, **kwargs)
         return self._outputs_info
+
 
 
 if __name__ == '__main__':

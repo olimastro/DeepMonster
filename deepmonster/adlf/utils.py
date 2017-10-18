@@ -10,6 +10,10 @@ def getftensor5():
     return T.TensorType('float32', (False,)*5)
 
 
+def getnumpyf32(size):
+    return np.random.random(size).astype(np.float32)
+
+
 def infer_odim_conv(i, k, s):
     return (i-k) // s + 1
 
@@ -38,40 +42,18 @@ def arguments(args_to_pop=None) :
     return args, posargs
 
 
-# useless with new extensions
-def parse_experiments(exp_root_path, save_old=False, enforce_new_name=None, prepare_files=True) :
-    script_name = sys.argv[0].split('.py')[0]
-    name = script_name if enforce_new_name is None else enforce_new_name
+def collapse_time_on_batch(x):
+    xshp = tuple([x.shape[i] for i in range(x.ndim)])
+    y = x.reshape((xshp[0] * xshp[1],) + xshp[2:])
+    return y, xshp
 
-    exp_full_path = exp_root_path+name+'/'
-    if prepare_files :
-        print "Experiments files at " + exp_full_path
+def expand_time_from_batch(x, orgshp):
+    xshp = tuple([x.shape[i] for i in range(x.ndim)])
+    return x.reshape((orgshp[0], orgshp[1],) + xshp[1:])
 
-        if save_old:
-            print "Save old argument passed, will move any files in this directory to a new folder"
-            dirs = [x for x in os.listdir(exp_full_path) if os.path.isdir(exp_full_path + x)]
-            if len(dirs) == 0:
-                archive = 'run1'
-            else:
-                dirs = sort_by_numbers_in_file_name(dirs)
-                archive = 'run' + str(int(dirs[-1].split('run')[-1]) + 1) + '/'
-            cmd = 'mkdir ' + exp_full_path + archive
-            print "Doing: " + cmd
-            os.system(cmd)
-
-            print "Moving all the files..."
-            for f in os.listdir(exp_full_path):
-                if os.path.isfile(exp_full_path + f):
-                    shutil.move(exp_full_path + f,exp_full_path + archive + f)
-
-        cmd = 'mkdir --parents ' + exp_full_path
-        print "Doing: " + cmd
-        os.system(cmd)
-        print "Copying " + sys.argv[0] + " to " + exp_full_path+name+'.py'
-        cmd = "cp " + sys.argv[0] + ' ' + exp_full_path+name+'.py'
-        os.system(cmd)
-
-    return exp_full_path, name
+def stack_time(x, y):
+    tup = ('x',) + tuple(range(x.ndim))
+    return T.concatenate([x.dimshuffle(*tup), y], axis=0)
 
 
 def prefix_vars_list(varlist, prefix):

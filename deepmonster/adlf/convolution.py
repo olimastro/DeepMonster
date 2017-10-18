@@ -161,7 +161,8 @@ class Conv3DLayer(ConvLayer) :
         If using a stack of Conv3D it is better to only dimshuffle twice
         at the io of the stack for memory and comp usage.
     """
-    def __init__(self, filter_size, num_filters, dimshuffle_inp=False, **kwargs):
+    def __init__(self, filter_size, num_filters, dimshuffle_inp=False,
+                 pad_time=(0,), **kwargs):
         # a bit of fooling around to use ConvLayer.__init__
         time_filter_size, filter_size = self._seperate_time_from_spatial(filter_size)
         strides = kwargs.pop('strides', (1,1,1))
@@ -170,6 +171,7 @@ class Conv3DLayer(ConvLayer) :
         self.time_filter_size = time_filter_size
         self.time_stride = time_stride
         self.dimshuffle_inp = dimshuffle_inp
+        self.pad_time = utils.parse_tuple(pad_time)
 
 
     def _seperate_time_from_spatial(self, tup):
@@ -211,8 +213,7 @@ class Conv3DLayer(ConvLayer) :
 
     def apply(self, x):
         subsample = self.time_stride + self.strides
-        # never pad time
-        border_mode = (0,) + self._border_mode
+        border_mode = self.pad_time + self._border_mode
         out = T.nnet.conv3d(x, self.W,
                             border_mode=border_mode,
                             subsample=subsample,
@@ -259,13 +260,12 @@ class Conv3DLayer(ConvLayer) :
 
 # Utilities classes to enable convlayers on a 5D tensors by surrounding their
 # fprop by reshapes. Collapse batch and time axis together
-
 class ConvLayer5D(ConvLayer):
     def fprop(self, x, **kwargs):
         if x.ndim == 5:
-            y = x.reshape((x.shape[0]*x.shape[1],x.shape[2],x.shape[3],x.shape[4]))
-            out = super(ConvLayer5D, self).fprop(y, **kwargs)
-            out = out.reshape((x.shape[0],x.shape[1],out.shape[1],out.shape[2],out.shape[3]))
+            x, xshp = utils.collapse_time_on_batch(x)
+            out = super(ConvLayer5D, self).fprop(x, **kwargs)
+            out = utils.expand_time_from_batch(out, xshp)
         else:
             # act normal
             out = super(ConvLayer5D, self).fprop(x, **kwargs)

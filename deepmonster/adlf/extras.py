@@ -76,17 +76,17 @@ class Dimshuffle(AbsLayer):
 
 
 
-class SpatialMean(AbsLayer):
+class GlobalAveragePooling(AbsLayer):
     def set_io_dims(self, tup):
         self.input_dims = tup
-        self.output_dims = tup[0]+ (1,1)
+        self.output_dims = (tup[0],)
 
 
     def apply(self, x):
         ndim = x.ndim - 1
-        pattern = tuple(range(x.ndim-2)) + ('x','x')
-        x = x.flatten(ndim=ndim)
-        return T.mean(x, axis=ndim-1).dimshuffle(*pattern)
+        pattern = tuple(range(x.ndim-2))
+        x = x.flatten(ndim)
+        return T.mean(x, axis=ndim-1)
 
 
 

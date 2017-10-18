@@ -88,6 +88,10 @@ class Softmax(Activation) :
     def __call__(self, input_) :
         return T.nnet.softmax(input_)
 
+class Swish(Activation):
+    def __call__(self, input_):
+        return input_ * T.nnet.sigmoid(input_)
+
 
 if __name__ == '__main__' :
     convmaxout = ConvMaxout(2)

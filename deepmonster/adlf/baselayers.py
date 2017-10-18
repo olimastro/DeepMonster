@@ -439,9 +439,9 @@ class RecurrentLayer(AbsLayer):
         kwargs.update(self.upwardlayer.accepted_kwargs_fprop)
         return kwargs
 
-    #@property
-    #def outputs_info(self):
-    #    return self.scanlayer.outputs_info
+    @property
+    def outputs_info(self):
+        return self.scanlayer.outputs_info
 
 
     def get_outputs_info(self, *args):
@@ -484,11 +484,13 @@ class RecurrentLayer(AbsLayer):
 
         if x.ndim in [2, 4]:
             assert mode == 'out2in'
-        if self.time_collapse and x.ndim == 5:
+        if self.time_collapse and mode == 'scan':
             # collapse batch and time together
-            in_up  = x.reshape((x.shape[0]*x.shape[1],x.shape[2],x.shape[3],x.shape[4]))
+            in_up, xshp = utils.collapse_time_on_batch(x)
         else:
             in_up = x
+
+        # forward pass
         h = self.upwardlayer.fprop(in_up, **kwargs)
 
         # sketchy but not sure how to workaround
@@ -503,7 +505,8 @@ class RecurrentLayer(AbsLayer):
             # the outputinfo of the outside scan should contain the reccurent state
             if outputs_info is None:
                 raise RuntimeError("There should be an outputs_info in fprop of "+self.prefix)
-            outputs_info = list(outputs_info)
+            outputs_info = list(outputs_info) if (isinstance(outputs_info, list) \
+                    or isinstance(outputs_info, tuple)) else [outputs_info]
 
             # this calls modify outputs info in the dict, but it should be fine
             self.scanlayer.before_scan(h, axis=0)
@@ -511,16 +514,12 @@ class RecurrentLayer(AbsLayer):
                          outputs_info + \
                          self.scanlayer.scan_namespace['non_sequences'])
             scanout = self.scanlayer.step(*args)
-
-            # this is needed for the outside scan
-            self.outputs_info = tuple(scanout[0])
-
             y = self.scanlayer.after_scan(scanout[0], scanout[1])
 
         elif mode == 'scan':
             if self.time_collapse:
-                tup = (h.shape[-1],) if x.ndim == 3 else (h.shape[-3],h.shape[-2],h.shape[-1])
-                h = h.reshape((x.shape[0], x.shape[1],)+tup)
+                # reshape to org tensor ndim
+                h = utils.expand_time_from_batch(h, xshp)
             y = self.scanlayer.apply(h, **kwargs)
 
         return y

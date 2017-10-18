@@ -112,6 +112,9 @@ class ScanLayer(Layer):
         """
             Do manipulations after scan
         """
+        # this is to preserve somewhere all the output a scanlayer might do
+        self.outputs_info = tuple(scanout) if (isinstance(scanout, list) \
+                or isinstance(scanout, tuple)) else (scanout,)
         # needed for batch norm
         if not hasattr(self, '_updates'):
             self._updates = [updates]
