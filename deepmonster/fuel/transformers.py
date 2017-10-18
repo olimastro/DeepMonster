@@ -110,7 +110,7 @@ class From01tomin11(DefaultTransformer):
 
 class AssertDataType(DefaultTransformer):
     def __init__(self, *args, **kwargs):
-        super(AssertDataType, self).__init__(*arg, **kwargs)
+        super(AssertDataType, self).__init__(*args, **kwargs)
         data = next(self.data_stream.get_epoch_iterator())[0]
         assert data.dtype == np.uint8, "Cannot use transformer, dtype is not uint8"
 
@@ -188,84 +188,94 @@ class OpticalFlow(DefaultTransformer):
             return [new_data, flows.transpose(0,3,1,2)] + list(batch[1:])
 
 
-class InsertLabeledExamples(Transformer):
-    def __init__(self, dataset, nb_class, nb_examples, examples_per_class, *args, **kwargs):
-        norm01 = kwargs.pop('norm01', True)
-        start = kwargs.pop('start', 0)
-        super(InsertLabeledExamples, self).__init__(*args, **kwargs)
-        self.dataset = dataset
-        self.norm01 = norm01
-        self.start = start
-        self.nb_class = nb_class
-        self.nb_examples = nb_examples
-        self.total_examples = examples_per_class * nb_class
-        self.current_slice_index = 0
-
-        # build a list of indexes on which we will loop with the original stream
-        print "Building labeled examples indexes list..."
-        print self.norm01
-        print self.start
-        stream = DataStream(
-            dataset=dataset,
-            iteration_scheme=SequentialScheme(
-                dataset.num_examples,
-                100))
-        epitr = stream.get_epoch_iterator()
-
-        statistics = np.zeros(nb_class)
-        self.statistics = np.zeros(nb_class)
-        indexes = []
-        for i in range(0, (dataset.num_examples // 100) * 100, 100):
-            if statistics.sum() == self.total_examples:
-                break
-            _, targets = next(epitr)
-            if i < self.start:
-                continue
-            for j in range(100):
-                if statistics[targets[j]].sum() < examples_per_class:
-                    indexes += [i + j]
-                    statistics[targets[j]] += 1
-        if statistics.sum() != self.total_examples:
-            raise RuntimeError("Transformer failed")
-        self.indexes = indexes
-
-
-    def transform_batch(self, batch):
-        start = self.current_slice_index
-        end = start + self.nb_examples
-        if end > len(self.indexes) :
-            #readjust to restart at the beginning of the list
-            #print "INFO: one epoch done on the labeled examples"
-            residual = end - len(self.indexes)
-            residual_indexes = self.indexes[start:]
-            # shuffle everytime an epoch is done, slight chance you have the same
-            # example reappearing in the same batch, but very little chance
-            shuffle(self.indexes)
-            indexes = residual_indexes + self.indexes[:residual]
-            self.current_slice_index = residual
-        else :
-            indexes = self.indexes[start:end]
-            self.current_slice_index += self.nb_examples
-
-        data, targets = self.dataset.get_data(state=None, request=indexes)
-        if self.norm01 :
-            data = data.astype(np.float32) / 255.
-        else:
-            data = data.astype(np.float32)
-            data = (data - 127.5) / 127.5
-
-        data = np.concatenate([data, batch[0]], axis=0)
-        #targets = np.concatenate([targets, batch[1]], axis=0)
-
-        return [data, targets]
-
-
-
-class CopyBatch(Transformer):
-    def transform_batch(self, batch):
-        data = np.concatenate([batch[0], batch[0]], axis=0)
-
-        return [data, batch[1]]
+#class SubSetStream(Transformer):
+#    def __init__(self, dataset, nb_class, nb_examples, examples_per_class, *args, **kwargs):
+#        norm01 = kwargs.pop('norm01', True)
+#        start = kwargs.pop('start', 0)
+#        super(SubSetStream, self).__init__(*args, **kwargs)
+#        self.dataset = dataset
+#        self.norm01 = norm01
+#        self.start = start
+#        self.nb_class = nb_class
+#        self.nb_examples = nb_examples
+#        self.total_examples = examples_per_class * nb_class
+#        self.current_slice_index = 0
+#
+#        # build a list of indexes on which we will loop with the original stream
+#        print "Building labeled examples indexes list..."
+#        print self.norm01
+#        print self.start
+#        stream = DataStream(
+#            dataset=dataset,
+#            iteration_scheme=SequentialScheme(
+#                dataset.num_examples,
+#                100))
+#        epitr = stream.get_epoch_iterator()
+#
+#        statistics = np.zeros(nb_class)
+#        self.statistics = np.zeros(nb_class)
+#        indexes = []
+#        for i in range(0, (dataset.num_examples // 100) * 100, 100):
+#            if statistics.sum() == self.total_examples:
+#                break
+#            _, targets = next(epitr)
+#            if i < self.start:
+#                continue
+#            for j in range(100):
+#                if statistics[targets[j]].sum() < examples_per_class:
+#                    indexes += [i + j]
+#                    statistics[targets[j]] += 1
+#        if statistics.sum() != self.total_examples:
+#            raise RuntimeError("Transformer failed")
+#        self.indexes = indexes
+#
+#
+#    def transform_batch(self, batch):
+#        # this completly ignores the batch incoming from its stream
+#        start = self.current_slice_index
+#        end = start + self.nb_examples
+#        if end > len(self.indexes) :
+#            #readjust to restart at the beginning of the list
+#            #print "INFO: one epoch done on the labeled examples"
+#            residual = end - len(self.indexes)
+#            residual_indexes = self.indexes[start:]
+#            # shuffle everytime an epoch is done, slight chance you have the same
+#            # example reappearing in the same batch, but very little chance
+#            shuffle(self.indexes)
+#            indexes = residual_indexes + self.indexes[:residual]
+#            self.current_slice_index = residual
+#        else :
+#            indexes = self.indexes[start:end]
+#            self.current_slice_index += self.nb_examples
+#
+#        data, targets = self.dataset.get_data(state=None, request=indexes)
+#        if self.norm01 :
+#            data = data.astype(np.float32) / 255.
+#        else:
+#            data = data.astype(np.float32)
+#            data = (data - 127.5) / 127.5
+#
+#        return [data, targets]
+#
+#
+#class InsertLabeledExamples(SubSetStream):
+#    def transform_batch(self, batch):
+#        subset_batch = super(InsertLabeledExamples, self).transform_batch(batch)
+#        data = subset_batch[0]
+#        targets = subset_batch[1]
+#
+#        data = np.concatenate([data, batch[0]], axis=0)
+#        #targets = np.concatenate([targets, batch[1]], axis=0)
+#
+#        return [data, targets]
+#
+#
+#
+#class CopyBatch(Transformer):
+#    def transform_batch(self, batch):
+#        data = np.concatenate([batch[0], batch[0]], axis=0)
+#
+#        return [data, batch[1]]
 
 
 

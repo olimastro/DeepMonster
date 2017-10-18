@@ -40,8 +40,9 @@ class Experiment(EpochExtension):
         self.crush_old = crush_old
 
         self.exp_name = name
-        self.local_path = local_path + name + '/'
-        self.network_path = network_path if network_path is None else network_path + name + '/'
+        self.local_path = os.path.join(local_path, name) + '/'
+        self.network_path = network_path if network_path is None else \
+                os.path.join(network_path, name) + '/'
         self.host = socket.gethostname()
         self.extra_infos = extra_infos
 
@@ -396,6 +397,19 @@ class LogAndSaveStuff(FileHandlingExt):
 
 
 
+class CheckDemNans(SimpleExtension):
+    def __init__(self, list_to_check, **kwargs):
+        self.list_to_check = list_to_check
+        super(CheckDemNans, self).__init__(**kwargs)
+
+    def do(self, which_callback, *args):
+        for x in self.list_to_check:
+            if np.isnan(x.get_value()).sum() > 0:
+                print "ERROR: NAN detected!"
+                import ipdb ; ipdb.set_trace()
+
+
+
 class Sample(FileHandlingExt):
     def __init__(self, model, **kwargs) :
         super(Sample, self).__init__(**kwargs)
@@ -524,14 +538,13 @@ class FrameGen(FileHandlingExt):
 
         epitr = self.datastream.get_epoch_iterator()
         while True:
-            if np.random.randint(0,1):
+            try:
+                batch = next(epitr)
+            except StopIteration:
+                epitr = self.datastream.get_epoch_iterator()
+            if np.random.randint(0,2):
                 continue
-            else:
-                try:
-                    batch = next(epitr)
-                    break
-                except StopIteration:
-                    epitr = self.datastream.get_epoch_iterator()
+            break
 
         samples = self.model.sampling_function(batch)
 
@@ -578,7 +591,7 @@ def prepare_png(X):
         for i, x in enumerate(X):
             j = i % ngrid
             i = i // ngrid
-            x = tf(x)
+            x = tf(x)[:,:,0]
             img[i*npxs+i:(i*npxs)+npxs+i, j*npxs+j:(j*npxs)+npxs+j] = x
         return img
 

@@ -1,6 +1,8 @@
+import numpy as np
 import fuel.datasets
 from fuel.schemes import SequentialScheme, ShuffledScheme
 from fuel.streams import DataStream
+from fuel.transformers import Merge
 
 from transformers import Normalize_01, Normalize_min1_1
 
@@ -95,42 +97,100 @@ def get_celeba(split, sources, load_in_memory):
     return CelebA('64', split, sources=sources, load_in_memory=load_in_memory)
 
 
-# TODO: ssl
-"""
-train_dataset = CIFAR10(('train',), sources=('features','targets',), subset=slice(0, 45000))
-valid_dataset = CIFAR10(('train',), sources=('features','targets',), subset=slice(45000, 50000))
-test_dataset = CIFAR10(('test',), sources=('features','targets',))
+class SubSetStream(DataStream):
+    def __init__(self, dataset, nb_class, examples_per_class, start=0, **kwargs):
+        assert dataset.sources == ('features', 'targets')
+        super(SubSetStream, self).__init__(dataset, **kwargs)
+        total_examples = nb_class * examples_per_class
+        # build a list of indexes corresponding to the subset
+        print "Building subset indexes list..."
+        stream = DataStream(
+            dataset=dataset,
+            iteration_scheme=SequentialScheme(
+                dataset.num_examples,
+                100))
+        epitr = stream.get_epoch_iterator()
 
-main_loop_stream = InsertLabeledExamples(
-    train_dataset, nb_class, batch_size_supervised, examples_per_class,
-    Normalize_min1_1(
-        DataStream(
-            dataset=train_dataset,
-            iteration_scheme=ShuffledScheme(
-                (train_dataset.num_examples // batch_size) * batch_size, batch_size))),
-                #batch_size, batch_size))),
-    norm01=False,
-    start = int(tag) * 4000,
-    produces_examples=False)
+        statistics = np.zeros(nb_class)
+        self.statistics = np.zeros(nb_class)
+        indexes = []
+        for i in range(0, (dataset.num_examples // 100) * 100, 100):
+            if statistics.sum() == total_examples:
+                break
+            _, targets = next(epitr)
+            if i < start:
+                continue
+            for j in range(100):
+                if statistics[targets[j]].sum() < examples_per_class:
+                    indexes += [i + j]
+                    statistics[targets[j]] += 1
+        if statistics.sum() != total_examples:
+            raise RuntimeError("Transformer failed")
+        self.indexes = indexes
 
-valid_stream = CopyBatch(
-    Normalize_min1_1(
-        DataStream(
-            dataset=valid_dataset,
-            iteration_scheme=ShuffledScheme(
-                (valid_dataset.num_examples // valid_monitoring_batch_size) * \
-                 valid_monitoring_batch_size, valid_monitoring_batch_size))),
-    produces_examples=False)
 
-test_stream = CopyBatch(
-    Normalize_min1_1(
-        DataStream(
-            dataset=test_dataset,
-            iteration_scheme=ShuffledScheme(
-                (test_dataset.num_examples // valid_monitoring_batch_size) * \
-                 valid_monitoring_batch_size, valid_monitoring_batch_size))),
-    produces_examples=False)
-"""
+    def get_data(self, request=None):
+        request = [self.indexes[i] for i in request]
+        return super(SubSetStream, self).get_data(request)
+
+
+class MultipleStreams(Merge):
+    """The original fuel Merge class resets all the the streams
+       epoch_iterator at the same time when one raise StopIteration.
+
+       This one will define one epoch over the **FIRST** stream
+       in the list, but will call get_epoch_iterator on individual
+       streams when they are done looping.
+    """
+    def __init__(self, *args, **kwargs):
+        self._print = kwargs.pop('print_other_streams_epoch_done', False)
+        super(MultipleStreams, self).__init__(*args, **kwargs)
+        self._streams_epitr_done = [False for dum in range(len(self.data_streams))]
+
+
+    def _reset_epoch_iterator(self):
+        for i in range(len(self._streams_epitr_done)):
+            if self._streams_epitr_done[i]:
+                self.child_epoch_iterators[i] = self.data_streams[i].get_epoch_iterator()
+                self._streams_epitr_done[i] = False
+
+
+    def get_epoch_iterator(self, **kwargs):
+        if not hasattr(self, 'child_epoch_iterators'):
+            self.child_epoch_iterators = [data_stream.get_epoch_iterator()
+                                          for data_stream in self.data_streams]
+        else:
+            self._reset_epoch_iterator()
+        return super(Merge, self).get_epoch_iterator(**kwargs)
+
+
+    def get_data(self, request=None):
+        if request is not None:
+            raise ValueError
+        result = []
+        for i in range(len(self.child_epoch_iterators)):
+            try:
+                sub_result = next(self.child_epoch_iterators[i])
+            except StopIteration:
+                self._streams_epitr_done[i] = True
+                if i == 0:
+                    # normal ending of epoch signal
+                    raise StopIteration
+                if self._print:
+                    print "Epoch done on stream #", i
+                self._reset_epoch_iterator()
+                sub_result = next(self.child_epoch_iterators[i])
+            result.extend(sub_result)
+        return tuple(result)
+
 
 if __name__ == '__main__':
-    import ipdb; ipdb.set_trace()
+    svhn = get_svhn(('train',), ('features', 'targets'), False)
+    stream = SubSetStream(
+        svhn,
+        10,
+        1000,
+        iteration_scheme=ShuffledScheme(10 * 1000, 25))
+    epitr = stream.get_epoch_iterator()
+    data = next(epitr)
+    print data[0].shape, data[1].shape
