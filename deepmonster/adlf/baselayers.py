@@ -517,6 +517,7 @@ class RecurrentLayer(AbsLayer):
             y = self.scanlayer.after_scan(scanout[0], scanout[1])
 
         elif mode == 'scan':
+            kwargs.update({'outputs_info': outputs_info})
             if self.time_collapse:
                 # reshape to org tensor ndim
                 h = utils.expand_time_from_batch(h, xshp)

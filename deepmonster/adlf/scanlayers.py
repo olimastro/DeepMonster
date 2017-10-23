@@ -291,10 +291,11 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         return outputs_info
 
 
-    def before_scan(self, x, axis=1):
+    def before_scan(self, x, axis=1, outputs_info=None):
         n_sample = x.shape[axis]
         sequences = [x]
-        outputs_info = self.get_outputs_info(n_sample)
+        outputs_info = self.get_outputs_info(n_sample) if outputs_info is None \
+                else outputs_info
         self.set_scan_namespace(sequences, outputs_info)
 
 

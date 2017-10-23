@@ -88,9 +88,16 @@ class Softmax(Activation) :
     def __call__(self, input_) :
         return T.nnet.softmax(input_)
 
+
 class Swish(Activation):
     def __call__(self, input_):
         return input_ * T.nnet.sigmoid(input_)
+
+
+class GELU(Activation):
+    def __call__(self, input_):
+        return 0.5 * input_ * (1. + T.tanh(T.sqrt(2. / np.pi) * \
+            (input_ + 0.044715 * input_**3)))
 
 
 if __name__ == '__main__' :
