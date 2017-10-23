@@ -23,8 +23,9 @@ class Experiment(EpochExtension):
     """
         This class is intended to do all the savings and bookeeping required
     """
-    def __init__(self, name, local_path, network_path=None, extra_infos='',
+    def __init__(self, name, local_path=None, network_path=None, extra_infos='',
                  crush_old=False, full_dump=False, **kwargs):
+        local_path = os.environ['EXPFILES_OUT'] if local_path is None else local_path
         kwargs.setdefault('before_training', True)
         super(Experiment, self).__init__(**kwargs)
 

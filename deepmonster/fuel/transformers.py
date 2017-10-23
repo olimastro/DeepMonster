@@ -18,6 +18,34 @@ class DefaultTransformer(Transformer):
             self.messaged = True
 
 
+class Transpose(DefaultTransformer):
+    def __init__(self, pattern, *args, **kwargs):
+        super(Transpose, self).__init__(*args, **kwargs)
+        self.pattern = pattern
+
+
+    def transform_batch(self, batch):
+        data = batch[0]
+        return [data.transpose(*self.pattern)]+list(batch[1:])
+
+
+class SampleSubsetTime(DefaultTransformer):
+    def __init__(self, ntime, *args, **kwargs):
+        super(SampleSubsetTime, self).__init__(*args, **kwargs)
+        self.ntime = ntime
+
+
+    def transform_batch(self, batch):
+        data = batch[0]
+        assert data.shape[0] - self.ntime >= 0
+        new_data = np.empty((self.ntime,) + data.shape[1:], dtype=data.dtype)
+        slices = np.random.randint(data.shape[0]-self.ntime+1, size=(data.shape[1],))
+        for i in range(data.shape[1]):
+            new_data[:,i,...] = data[slices[i]:slices[i]+self.ntime,i,...]
+
+        return [data]+list(batch[1:])
+
+
 class UpsampleToShape(DefaultTransformer):
     def __init__(self, shape, *args, **kwargs):
         super(UpsampleToShape, self).__init__(*args, **kwargs)
