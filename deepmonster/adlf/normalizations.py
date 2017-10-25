@@ -56,39 +56,22 @@ def weight_norm(layer, train_g=None):
 
 
 
-def batch_norm(x, betas, gammas, bn_mean_only=False):
-    # TODO: make spatial batch_norm optional
-    if x.ndim == 2:
-        axis = 1
-        pattern = ('x',0)
-    elif x.ndim == 4 :
-        axis = [0, 2, 3] # this implies spatial batch norm
-        pattern = ('x',0,'x','x')
+def batch_norm(x, betas, gammas, mean=None, invstd=None, axes='auto'):
+    assert (mean is None and invstd is None) or \
+            (not mean is None and not invstd is None)
+    if axes == 'auto':
+        if x.ndim == 2:
+            axes = 'per-activation'
+        elif x.ndim == 4 :
+            axes = 'spatial'
+        else:
+            raise ValueError("Dims {} in batch norm?".format(x.ndim))
+    if mean is None:
+        rx, rm, rv = T.nnet.bn.batch_normalization_train(x, gammas, betas, axes=axes)
     else:
-        raise ValueError("Dims {} in batch norm?".format(x.ndim))
+        var = T.sqr(1. / invstd)
+        rm = None
+        rv = None
+        rx = T.nnet.bn.batch_normalization_test(x, gammas, betas, mean, var, axes=axes)
 
-    mean = x.mean(axis=axis, keepdims=True)
-    if not bn_mean_only :
-        var = T.mean(T.sqr(x - mean), axis=axis, keepdims=True)
-    else :
-        var = theano.tensor.ones_like(mean)
-
-    if betas == 0 :
-        pass
-    elif betas.ndim == 1:
-        betas = betas.dimshuffle(pattern)
-    elif betas.ndim == 3:
-        betas = betas.dimshuffle((x.ndim-3)*('x',)+(0,1,2,))
-
-    if gammas == 1:
-        pass
-    else:
-        gammas = gammas.dimshuffle(pattern)
-
-    var_corrected = var + 1e-6
-    y = theano.tensor.nnet.bn.batch_normalization(
-        inputs=x, gamma=gammas, beta=betas,
-        mean=mean,
-        std=theano.tensor.sqrt(var_corrected),
-        mode="low_mem")
-    return y, mean, var
+    return rx, rm, rv

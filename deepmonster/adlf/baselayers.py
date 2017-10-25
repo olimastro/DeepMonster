@@ -5,6 +5,7 @@ import theano.tensor as T
 
 import utils
 from activations import Activation
+from graph import graph_traversal
 from initializations import Initialization
 from normalizations import weight_norm, batch_norm
 
@@ -249,6 +250,11 @@ class Layer(AbsLayer):
                 gammas = self.gammas
             preact = self.bn(preact, self.betas, gammas,
                              deterministic=deterministic)
+            bn_vars = self.find_bn_vars(preact)
+            if hasattr(self, 'bn_vars'):
+                print "WARNING: this layer {} already had bn_vars being ".format(
+                    self.prefix) + "being tracked and they are being overwritten"
+            self.bn_vars = bn_vars
         if wn_init:
             preact = self.init_wn(preact)
 
@@ -271,103 +277,81 @@ class Layer(AbsLayer):
 
 
     # -------- Normalization related functions -------------- #
-    #NOTE: batch norm is a pain to implement
+    ### batch norm ###
     def batch_norm_addparams(self):
             self.param_dict.update({
                 'gammas' : [self.output_dims[0], 'ones']
             })
 
 
+    def find_bn_vars(self, *varz):
+        bn_varz = [list(set(graph_traversal(var, 'bntag'))) for var in varz]
+        # for each v in varz we will have a list, so this is a list of lists,
+        # return the flatten version
+        rval = []
+        for l in bn_varz:
+            rval += l
+        return rval
+
+
+    def fetch_bn_vars(self, key):
+        for v in self.bn_vars:
+            if key in v.tag.bntag and 'mean' in v.tag.bntag:
+                mean = v
+            if key in v.tag.bntag and 'invstd' in v.tag.bntag:
+                invstd = v
+        if mean is None or invstd is None:
+            raise RuntimeError("Could not fetch batch norm variables!")
+        # cannot use premade types since we don't know in advance
+        rmean = T.TensorType('float32', (False,) * mean.ndim)(
+            self.prefix + '_' + mean.tag.bntag)
+        rinvstd = T.TensorType('float32', (False,) * invstd.ndim)(
+            self.prefix + '_' + mean.tag.bntag)
+
+        # need to store them somewhere
+        self.input_bn_vars = [rmean, rinvstd]
+        return rmean, rinvstd
+
+
     def bn(self, x, betas, gammas, key='', deterministic=False):
+        """
+            BN is the king of pain in the ass especially in the case of RNN
+            (which is actually why this whole library was written for at first).
+            We have two modes, training (deterministic=False) and testing
+            (deterministic=True).
+        """
         if betas is None:
             betas = 0
         if gammas is None:
             gammas = 1
-        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
         # make sure the format of the key is _something_
         # if it is this case, lets hope the user made only one batch norm call at this layer
-        # with an empty key TODO:FIX THIS!
         if key != '':
             if '_' != key[0]:
                 key = '_' + key
             if '_' != key[-1]:
                 key = key + '_'
-        mean.tag.bntag = 'mean'+key
-        var.tag.bntag = 'var'+key
-        return rval
-        # TODO: make spatial BN optional
-        if x.ndim == 2:
-            pattern = ('x',0)
-        elif x.ndim == 4:
-            pattern = ('x',0,'x','x')
-        else:
-            raise ValueError("Invalid dimensions in batch norm in layer {}".format(self))
-        if not hasattr(self, 'bn_updates'):
-            self.bn_updates = []
-
-        # batch stat creation
-        batch_stat_created_at_this_call = True
-        if len(self.bn_updates) == 0 or \
-           not any([key in u[0].name and self.prefix in u[0].name for u in self.bn_updates]):
-            # try to infer shape from betas or gammas, more secure
-            if betas is not None and betas != 0:
-                shape = betas.get_value().shape
-            elif gammas is not None and gammas != 1:
-                shape = gammas.get_value().shape
-            else:
-                # lets try this...
-                shape = (self.output_dims[0],)
-            avg_mean = Initialization({}).initialization_method['zeros'](shape)
-            avg_var = Initialization({}).initialization_method['ones'](shape)
-
-            shrd_mean = theano.shared(avg_mean,
-                                      name='{}{}bn_mean'.format(self.prefix, key))
-            shrd_var = theano.shared(avg_var,
-                                     name='{}{}bn_var'.format(self.prefix, key))
-        else:
-            # this for loop should ALWAYS find something...
-            for i, tup in enumerate(self.bn_updates):
-                if '{}{}bn_mean'.format(self.prefix, key) in tup[0].name:
-                    shrd_mean = tup[0]
-                    shrd_var = self.bn_updates[i+1][0]
-                    batch_stat_created_at_this_call = False
-                    break
-            # ...so this bool has to be False here
-            if batch_stat_created_at_this_call:
-                import ipdb; ipdb.set_trace()
-                raise RuntimeError("Come inspect code at this error!")
-
-        _shrd_mean = shrd_mean.dimshuffle(*pattern)
-        _shrd_var = shrd_var.dimshuffle(*pattern)
 
         if deterministic:
-            return (x-_shrd_mean) / T.sqrt(1e-6 + _shrd_var)
-
-        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
-
-        if batch_stat_created_at_this_call:
-            try:
-                new_m = 0.9 * _shrd_mean + 0.1 * mean
-            except ValueError as e:
-                print "ERROR: The shape was not inferred from betas in layer {}".format(self) + \
-                        ", the ValueError could come from this."
-                raise e
-            new_v = 0.9 * _shrd_var + 0.1 * var
-            self.bn_updates += [(shrd_mean, new_m.flatten()), (shrd_var, new_v.flatten())]
+            mean, invstd = self.fetch_bn_vars(key)
         else:
-            #FIXME: Each pass of batch norm at det=False should have its own
-            # stats for its equivalent pass at det=True
-            print "WARNING: You are recalling {} on fprop(deterministic=False) ".format(self.prefix) + \
-                    "and it has already made its batch norm statistics. It will not " + \
-                    "recreate new ones. This could cause this same fprop " + \
-                    "on deterministic=True to give incorrect results"
+            mean, invstd = (None, None,)
+        rval, mean, invstd = batch_norm(x, betas, gammas, mean, invstd)
+        if not deterministic:
+            # we cant just store them in an easy way because of RNN and its
+            # step function. This has to be called _inside_ the step (aka much problems)
+            mean.tag.bntag = 'mean' + key
+            invstd.tag.bntag = 'invstd' + key
+
         return rval
+    ###
 
-
+    ### weight norm ###
     #FIXME: the dimshuffle on the mean and var depends on their dim.
     # Easy for 2&4D, but for a 5D or 3D tensor?
     def init_wn(self, x, init_stdv=0.1):
-        raise NotImplementedError("You can use wn for now by doing batch norm on first layer")
+        raise NotImplementedError("You can use init_wn for now by doing batch +\
+                                  norm on first layer")
         m = T.mean(x, self.wn_axes_to_sum)
         x -= m.dimshuffle(*self.wn_dimshuffle_args)
         inv_stdv = init_stdv/T.sqrt(T.mean(T.square(x), self.wn_axes_to_sum))
@@ -507,13 +491,15 @@ class RecurrentLayer(AbsLayer):
             # the outputinfo of the outside scan should contain the reccurent state
             if outputs_info is None:
                 raise RuntimeError("There should be an outputs_info in fprop of "+self.prefix)
+
+            # parse the format correctly
             outputs_info = list(outputs_info) if (isinstance(outputs_info, list) \
                     or isinstance(outputs_info, tuple)) else [outputs_info]
 
             # this calls modify outputs info in the dict, but it should be fine
-            self.scanlayer.before_scan(h, axis=0)
+            self.scanlayer.before_scan(h, axis=0, outputs_info=outputs_info)
             args = tuple(self.scanlayer.scan_namespace['sequences'] + \
-                         outputs_info + \
+                         self.scanlayer.scan_namespace['outputs_info'] + \
                          self.scanlayer.scan_namespace['non_sequences'])
             scanout = self.scanlayer.step(*args)
             y = self.scanlayer.after_scan(scanout[0], scanout[1])

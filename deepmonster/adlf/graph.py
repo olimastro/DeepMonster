@@ -2,7 +2,6 @@ import theano
 
 # traverse the graph in search of a tag
 def graph_traversal(x, attr):
-    rval = []
     def one_step_deeper(L, var):
         if getattr(var.tag, attr, None) is not None:
             L += [var]
@@ -13,6 +12,7 @@ def graph_traversal(x, attr):
             one_step_deeper(L, v)
         return
 
+    rval = []
     one_step_deeper(rval, x)
     return rval
 

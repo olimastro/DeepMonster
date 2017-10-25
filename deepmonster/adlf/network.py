@@ -1,5 +1,6 @@
 import inspect
 import theano.tensor as T
+from utils import flatten
 
 
 class Feedforward(object):
@@ -37,9 +38,11 @@ class Feedforward(object):
         if set_attr :
             self.set_attributes()
 
-        # would be useful but try to not break all the scripts
-        #if not kwargs.pop('no_init', False):
-        #    self.initialize()
+        # would be useful but try to not break all the past scripts
+        self._have_been_init = False
+        if not kwargs.pop('no_init', False):
+            self.initialize()
+            self._have_been_init = True
 
 
     def __getattribute__(self, name):
@@ -70,22 +73,13 @@ class Feedforward(object):
         pass
 
 
-    # how to mix these two properties with the propagate decorator?
     @property
     def params(self):
-        params = []
-        for layer in self.layers :
-            params += layer.params
-        return params
-
+        return find_attributes(self.layers, 'params')
 
     @property
     def outputs_info(self):
-        outputs_info = []
-        for layer in self.layers:
-            if hasattr(layer, 'outputs_info'):
-                outputs_info += layer.outputs_info
-        return tuple(outputs_info)
+        return tuple(find_attributes(self.layers, 'outputs_info'))
 
 
     @property
@@ -115,6 +109,8 @@ class Feedforward(object):
 
 
     def initialize(self, i, layer, **kwargs):
+        if self._have_been_init:
+            print self.prefix + " already have been init, supressing this init call"
         if i == 0 :
             if not hasattr(layer, 'input_dims'):
                 raise ValueError("The very first layer of this chain needs its input_dims!")
@@ -195,6 +191,22 @@ class Feedforward(object):
         self._get_outputs_info(*args, **kwargs)
         return self._outputs_info
 
+
+
+def find_attributes(L, a):
+    # return a FLAT list of all attributes found
+    if not isinstance(L, (list, tuple)):
+        L = [L]
+    attributes = []
+    for l in L:
+        attributes += list(flatten(getattr(l, a, [])))
+    return attributes
+
+
+def find_nets(localz):
+    # this is for the lazy :)
+    # give locals() as argument to the script defining the networks
+    return [x for x in localz if isinstance(x, Feedforward)]
 
 
 if __name__ == '__main__':

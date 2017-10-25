@@ -89,6 +89,16 @@ def parse_tuple(tup, length=1) :
     return (tup,) * length
 
 
+def flatten(container):
+    # flatten list made of tuple or list
+    for i in container:
+        if isinstance(i, (list, tuple)):
+            for j in flatten(i):
+                yield j
+        else:
+            yield i
+
+
 def get_gradients_list(feedforwards, y):
     """
         Helper function to get a list of all the gradients of y with respect to
