@@ -284,7 +284,6 @@ class Layer(AbsLayer):
         if gammas is None:
             gammas = 1
         rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
-        return rval
         # make sure the format of the key is _something_
         # if it is this case, lets hope the user made only one batch norm call at this layer
         # with an empty key TODO:FIX THIS!
@@ -293,6 +292,9 @@ class Layer(AbsLayer):
                 key = '_' + key
             if '_' != key[-1]:
                 key = key + '_'
+        mean.tag.bntag = 'mean'+key
+        var.tag.bntag = 'var'+key
+        return rval
         # TODO: make spatial BN optional
         if x.ndim == 2:
             pattern = ('x',0)

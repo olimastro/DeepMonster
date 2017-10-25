@@ -1,10 +1,11 @@
-import inspect
+import inspect, copy
 import numpy as np
 import theano
 import theano.tensor as T
 
 from baselayers import Layer
 from convolution import ConvLayer
+from graph import graph_traversal
 from simple import FullyConnectedLayer
 
 
@@ -30,7 +31,7 @@ class ScanLayer(Layer):
             matrix) and kwargs (such as batch_norm parameters)
         """
         step_arg_list = inspect.getargspec(self.step).args
-        param_names = [x for x in self.param_dict.keys()]
+        param_names = self.param_dict.keys()
 
         slice_len = len(param_names)
         sublist = []
@@ -43,6 +44,27 @@ class ScanLayer(Layer):
             non_seq += [getattr(self, param)]
 
         return non_seq
+
+
+    @property
+    def nb_bn_vars(self):
+        """
+            The nb of batch norm vars created in the step function should be
+            related to 1) the specifics of the rnn layer being implemented
+            and 2) the rnn-bn implementation.
+        """
+        return 0
+
+
+    # making sure that there is a default value
+    @property
+    def deterministic(self):
+        return getattr(self, '_deterministic', False)
+
+    @deterministic.setter
+    def deterministic(self, value):
+        assert value is True or value is False
+        self._deterministic = value
 
 
     def step(self):
@@ -70,10 +92,13 @@ class ScanLayer(Layer):
             # if any wrapping layer hacked self.step, it probably hacked
             # the non_sequences list. We want these changes to be preserved
             non_sequences = self.scan_namespace['non_sequences']
-        elif non_sequences is None :
+        else:
             non_sequences = self.non_sequences
+
         if outputs_info is None:
             outputs_info = self.get_outputs_info()
+        if self.batch_norm:
+            outputs_info += self.get_bn_outputs_info()
         namespace = {
             'sequences' : sequences,
             'outputs_info' : outputs_info,
@@ -82,14 +107,56 @@ class ScanLayer(Layer):
         self.scan_namespace = namespace
 
 
-    def before_scan(self, *args, **kwargs):
+    def before_scan(self, sequences, outputs_info=None):
         """
             Do before scan manipulations and populate the scan namespace.
 
             This is basically the beginning of the fprop and receives as
             input what is being propagated from the layer below.
         """
-        pass
+        if self.batch_norm and self.deterministic:
+            # remember old step if we recall this graph
+            self.old_step = copy.copy(self.step)
+            # first hack the step func
+            self.step = self.bn_step_decorator(self.step)
+            # second put all these bn vars as input
+            sequences = self.bn_vars + sequences
+        elif hasattr(self, 'old_step'):
+            self.step = self.old_step
+        self.set_scan_namespace(sequences, outputs_info)
+
+
+    def bn_step_decorator(self, step):
+        """
+            This is necessary so when scan looks at the arguments
+            of the step function, it finds all the theano bn vars
+            even though in this code I will pass them through other
+            means.
+        """
+        def bn_step(*args, **kwargs):
+            argz = args[:self.nb_bn_vars]
+            rval = step(*argz, **kwargs)
+            return rval
+        return bn_step
+
+
+    def get_bn_outputs_info(self):
+        """
+            When we track batch norm variables created inside the step
+            funciton, we need to get them out of scan. It will require
+            to link them as `None` on the input side
+        """
+        return [None for i in range(self.nb_bn_vars)]
+
+
+    def track_bn_vars(self, scanout):
+        """
+            Retrieve the bn vars from the output list
+        """
+        if hasattr(self, 'bn_vars'):
+            print "WARNING: this layer {} already had bn_vars being ".format(
+                self.prefix) + "being tracked and they are being overwritten"
+        self.bn_vars = scanout[len(scanout) - self.nb_bn_vars:]
 
 
     def scan(self):
@@ -97,7 +164,7 @@ class ScanLayer(Layer):
         # that it could be because you have created a variable in the
         # step function (like it happens in batch norm) and strict is True.
         # Or some other scan shenanigans
-        strict = False if self.batch_norm else True
+        #strict = False if self.batch_norm else True
         rval, updates = theano.scan(
             self.step,
             sequences=self.scan_namespace['sequences'],
@@ -112,14 +179,11 @@ class ScanLayer(Layer):
         """
             Do manipulations after scan
         """
+        if self.batch_norm:
+            scanout = self.track_bn_vars(scanout)
         # this is to preserve somewhere all the output a scanlayer might do
         self.outputs_info = tuple(scanout) if (isinstance(scanout, list) \
                 or isinstance(scanout, tuple)) else (scanout,)
-        # needed for batch norm
-        if not hasattr(self, '_updates'):
-            self._updates = [updates]
-        else:
-            self._updates.extend(updates)
         return scanout
 
 
@@ -164,6 +228,7 @@ class ScanLayer(Layer):
             rval = self.unroll_scan()
         else:
             rval, updates = self.scan()
+            import ipdb; ipdb.set_trace()
         out = self.after_scan(rval, updates)
 
         return out
@@ -201,6 +266,10 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
                 'c_gammas' : [self.output_dims, 'ones', 0.1],
                 'c_betas' : [self.output_dims, 'zeros'],
             })
+
+
+    def get_bn_outputs_info(self):
+        return [None for i in range(6)]
 
 
     def param_dict_initialization(self):
@@ -276,13 +345,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         else :
             h = o * T.tanh(c)
 
-        # same as the error message in batch norm, next time this is called
-        # at deterministic=False it wont use the batch norm stat
-        if False and self.batch_norm and not deterministic and not hasattr(self,'_updates'):
-            updates = self.bn_updates
-        else:
-            updates = []
-        return [h, c], updates
+        return [h, c] + list(set(graph_traversal(h,'bntag'))), updates
 
 
     def get_outputs_info(self, n):
@@ -296,7 +359,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         sequences = [x]
         outputs_info = self.get_outputs_info(n_sample) if outputs_info is None \
                 else outputs_info
-        self.set_scan_namespace(sequences, outputs_info)
+        super(ScanLSTM, self).before_scan(sequences, outputs_info)
 
 
     def after_scan(self, scanout, updates):
