@@ -1,10 +1,10 @@
 import copy
-import inspect
 import theano
 import theano.tensor as T
 
 import utils
 from activations import Activation
+from graph import graph_traversal
 from initializations import Initialization
 from normalizations import weight_norm, batch_norm
 
@@ -20,8 +20,8 @@ class AbsLayer(object):
 
     def set_attributes(self, attributes) :
         """
-            Feedforward will call on each layer set_attributes with a dictionnary of all the
-            values it has to set to all layers in the feedforwad block.
+            Feedforward will call on each layer set_attributes with a dictionnary
+            of all the values it has to set to all layers in the feedforwad block.
 
             By default, a layer has no attributes and will just pass this call
         """
@@ -30,9 +30,9 @@ class AbsLayer(object):
 
     def initialize(self):
         """
-            Initialize the values of the parameters according to their param_dict. In this dict,
-            each parameter key map to a initilization method and an attribute self.key
-            will be set
+            Initialize the values of the parameters according to their param_dict.
+            In this dict, each parameter key map to a initilization method and
+            an attribute self.key will be set.
         """
         self.params = []
 
@@ -92,13 +92,9 @@ class AbsLayer(object):
         kwargs = set()
         for cl in mro:
             if hasattr(cl, 'fprop'):
-                argspec = inspect.getargspec(cl.fprop)
-                if argspec.defaults is not None:
-                    kwargs.update(argspec.args[-len(argspec.defaults):])
+                kwargs.update(utils.find_func_kwargs(cl.fprop))
             if hasattr(cl, 'apply'):
-                argspec = inspect.getargspec(cl.apply)
-                if argspec.defaults is not None:
-                    kwargs.update(argspec.args[-len(argspec.defaults):])
+                kwargs.update(utils.find_func_kwargs(cl.apply))
         return kwargs
 
 
@@ -225,8 +221,8 @@ class Layer(AbsLayer):
 
     def fprop(self, x, wn_init=False, deterministic=False, **kwargs):
         """
-            fprop of this class is meant to deal with all the various inference / training phase
-            or normalization scheme a layer could want
+            fprop of this class is meant to deal with all the various inference
+            / training phase or normalization scheme a layer could want
         """
 
         # deterministic is a 'fundamental' keyword and potentially can be used or not
@@ -243,12 +239,7 @@ class Layer(AbsLayer):
                 raise e
 
         if self.batch_norm:
-            if self.weight_norm and self.bn_mean_only:
-                gammas = None
-            else:
-                gammas = self.gammas
-            preact = self.bn(preact, self.betas, gammas,
-                             deterministic=deterministic)
+            preact = self.bn(preact, deterministic=deterministic)
         if wn_init:
             preact = self.init_wn(preact)
 
@@ -271,101 +262,62 @@ class Layer(AbsLayer):
 
 
     # -------- Normalization related functions -------------- #
-    #NOTE: batch norm is a pain to implement
+    ### batch norm ###
     def batch_norm_addparams(self):
             self.param_dict.update({
                 'gammas' : [self.output_dims[0], 'ones']
             })
 
 
-    def bn(self, x, betas, gammas, key='', deterministic=False):
-        if betas is None:
-            betas = 0
-        if gammas is None:
-            gammas = 1
-        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
-        return rval
+    def tag_bn_vars(self, var, name):
+        # tag the graph so popstats can use it
+        var.name = name
+        setattr(var.tag, 'bn_statistic', name)
+
+
+    def bn(self, x, betas=None, gammas=None, key='_', deterministic=False):
+        """
+            BN is the king of pain in the ass especially in the case of RNN
+            (which is actually why this whole library was written for at first).
+
+            BN is to be used with get_inference_graph in popstats at inference phase.
+            It will compute the batch statistics from a dataset and replace in the
+            theano graph the tagged bnstat with the computed values.
+
+            All the deterministic logic is therefore deprecated here.
+        """
         # make sure the format of the key is _something_
-        # if it is this case, lets hope the user made only one batch norm call at this layer
-        # with an empty key TODO:FIX THIS!
-        if key != '':
+        if key != '_':
             if '_' != key[0]:
                 key = '_' + key
             if '_' != key[-1]:
                 key = key + '_'
-        # TODO: make spatial BN optional
-        if x.ndim == 2:
-            pattern = ('x',0)
-        elif x.ndim == 4:
-            pattern = ('x',0,'x','x')
-        else:
-            raise ValueError("Invalid dimensions in batch norm in layer {}".format(self))
-        if not hasattr(self, 'bn_updates'):
-            self.bn_updates = []
 
-        # batch stat creation
-        batch_stat_created_at_this_call = True
-        if len(self.bn_updates) == 0 or \
-           not any([key in u[0].name and self.prefix in u[0].name for u in self.bn_updates]):
-            # try to infer shape from betas or gammas, more secure
-            if betas is not None and betas != 0:
-                shape = betas.get_value().shape
-            elif gammas is not None and gammas != 1:
-                shape = gammas.get_value().shape
-            else:
-                # lets try this...
-                shape = (self.output_dims[0],)
-            avg_mean = Initialization({}).initialization_method['zeros'](shape)
-            avg_var = Initialization({}).initialization_method['ones'](shape)
+        #if deterministic:
+        #    print "WARNING: deterministic=True is deprecated in Layer.bn and has"+\
+        #            " no effect"
 
-            shrd_mean = theano.shared(avg_mean,
-                                      name='{}{}bn_mean'.format(self.prefix, key))
-            shrd_var = theano.shared(avg_var,
-                                     name='{}{}bn_var'.format(self.prefix, key))
-        else:
-            # this for loop should ALWAYS find something...
-            for i, tup in enumerate(self.bn_updates):
-                if '{}{}bn_mean'.format(self.prefix, key) in tup[0].name:
-                    shrd_mean = tup[0]
-                    shrd_var = self.bn_updates[i+1][0]
-                    batch_stat_created_at_this_call = False
-                    break
-            # ...so this bool has to be False here
-            if batch_stat_created_at_this_call:
-                import ipdb; ipdb.set_trace()
-                raise RuntimeError("Come inspect code at this error!")
+        mean, std = (None, None,)
 
-        _shrd_mean = shrd_mean.dimshuffle(*pattern)
-        _shrd_var = shrd_var.dimshuffle(*pattern)
+        if betas is None:
+            betas = getattr(self, 'betas', 0.)
+        if gammas is None:
+            gammas = getattr(self, 'gammas', 1.)
+        rval, mean, std = batch_norm(x, betas, gammas, mean, std)
 
-        if deterministic:
-            return (x-_shrd_mean) / T.sqrt(1e-6 + _shrd_var)
+        if not deterministic:
+            self.tag_bn_vars(mean, 'mean' + key + self.prefix)
+            self.tag_bn_vars(std, 'std' + key + self.prefix)
 
-        rval, mean, var = batch_norm(x, betas, gammas, self.bn_mean_only)
-
-        if batch_stat_created_at_this_call:
-            try:
-                new_m = 0.9 * _shrd_mean + 0.1 * mean
-            except ValueError as e:
-                print "ERROR: The shape was not inferred from betas in layer {}".format(self) + \
-                        ", the ValueError could come from this."
-                raise e
-            new_v = 0.9 * _shrd_var + 0.1 * var
-            self.bn_updates += [(shrd_mean, new_m.flatten()), (shrd_var, new_v.flatten())]
-        else:
-            #FIXME: Each pass of batch norm at det=False should have its own
-            # stats for its equivalent pass at det=True
-            print "WARNING: You are recalling {} on fprop(deterministic=False) ".format(self.prefix) + \
-                    "and it has already made its batch norm statistics. It will not " + \
-                    "recreate new ones. This could cause this same fprop " + \
-                    "on deterministic=True to give incorrect results"
         return rval
+    ###
 
-
+    ### weight norm ###
     #FIXME: the dimshuffle on the mean and var depends on their dim.
     # Easy for 2&4D, but for a 5D or 3D tensor?
     def init_wn(self, x, init_stdv=0.1):
-        raise NotImplementedError("You can use wn for now by doing batch norm on first layer")
+        raise NotImplementedError("You can use init_wn for now by doing batch +\
+                                  norm on first layer")
         m = T.mean(x, self.wn_axes_to_sum)
         x -= m.dimshuffle(*self.wn_dimshuffle_args)
         inv_stdv = init_stdv/T.sqrt(T.mean(T.square(x), self.wn_axes_to_sum))
@@ -379,18 +331,20 @@ class Layer(AbsLayer):
 
 class RecurrentLayer(AbsLayer):
     """
-        A reccurent layer consists of two applications of somewhat independant layers: one
-        that does an application like a feedforward, and the other that does the application
-        through time.
+        A reccurent layer consists of two applications of somewhat independant
+        layers: one that does an application like a feedforward, and the other
+        that does the application through time.
 
-        A rnn can also be used in mostly two fashion. It is either fed its own output for the
-        next time step or it computes a whole sequence. In case 1), we only need one theano scan
-        which is outside what is actually just a normal FeedForwardNetwork. In case 2), every
-        single instance of an rnn needs to have its own theano scan.
+        A rnn can also be used in mostly two fashion. It is either fed its own
+        output for the next time step or it computes a whole sequence. In case
+        1), we only need one theano scan which is outside what is actually just
+        a normal FeedForwardNetwork. In case 2), every  single instance of an
+        rnn needs to have its own theano scan.
 
         This class, with ScanLayer class, is intended to handle all these cases.
-        NOTE: It should be possible to use a non scanlayer for the time application, in this
-        case if no step is implemented, this class will call the fprop of that layer.
+        NOTE: It should be possible to use a non scanlayer for the time application,
+        in this  case if no step is implemented, this class will call the fprop
+        of that layer.
     """
     def __init__(self, upwardlayer, scanlayer, mode='auto', time_collapse=True):
         assert mode in ['scan', 'out2in', 'auto']
@@ -412,17 +366,6 @@ class RecurrentLayer(AbsLayer):
     @property
     def params(self):
         return self.upwardlayer.params + self.scanlayer.params
-
-    @property
-    def bn_updates(self):
-        updt = getattr(self.upwardlayer,'bn_updates',[])
-        orderedupdt = getattr(self.scanlayer,'_updates',[])
-        if isinstance(orderedupdt, list):
-            updt += orderedupdt
-        else:
-            # it is an OrderedUpdate
-            updt = updt + [item for item in orderedupdt.iteritems()]
-        return updt
 
     @property
     def input_dims(self):
@@ -465,13 +408,16 @@ class RecurrentLayer(AbsLayer):
 
     def fprop(self, x, outputs_info=None, **kwargs):
         """
-            This fprop should deal with various setups. if x.ndim == 5 it is pretty easy,
-            every individual fprop of the rnn should handle this case easily since the fprop
-            through time has its own time implementation.
+            This fprop should deal with various setups. if x.ndim == 5 it is
+            pretty easy, every individual fprop of the rnn should handle this
+            case easily since the fprop through time has its own time
+            implementation.
 
-            if x.ndim == 4 now it gets funky. Are we inside a for loop or a inside a theano scan?
-            Since a for loop is easier, lets consider the scan case and the for loop user shall adapt.
-            In this case kwargs should contain outputs_info which IN THE SAME ORDER should correspond
+            if x.ndim == 4 now it gets funky. Are we inside a for loop or a
+            inside a theano scan?
+            Since a for loop is easier, lets consider the scan case and the for
+            loop user shall adapt. In this case kwargs should contain outputs_info
+            which IN THE SAME ORDER should correspond
             to the reccurent state that the scanlayer.step is using.
         """
         # logic here is that if x.ndim is 2 or 4, x is in bc or bc01
@@ -504,14 +450,17 @@ class RecurrentLayer(AbsLayer):
 
             # the outputinfo of the outside scan should contain the reccurent state
             if outputs_info is None:
-                raise RuntimeError("There should be an outputs_info in fprop of "+self.prefix)
-            outputs_info = list(outputs_info) if (isinstance(outputs_info, list) \
+                raise RuntimeError(
+                    "There should be an outputs_info in fprop of "+self.prefix)
+
+            # parse the format correctly
+            outputs_info = list(outputs_info) if (isinstance(outputs_info, list)\
                     or isinstance(outputs_info, tuple)) else [outputs_info]
 
             # this calls modify outputs info in the dict, but it should be fine
-            self.scanlayer.before_scan(h, axis=0)
+            self.scanlayer.before_scan(h, axis=0, outputs_info=outputs_info)
             args = tuple(self.scanlayer.scan_namespace['sequences'] + \
-                         outputs_info + \
+                         self.scanlayer.scan_namespace['outputs_info'] + \
                          self.scanlayer.scan_namespace['non_sequences'])
             scanout = self.scanlayer.step(*args)
             y = self.scanlayer.after_scan(scanout[0], scanout[1])
@@ -524,34 +473,6 @@ class RecurrentLayer(AbsLayer):
             y = self.scanlayer.apply(h, **kwargs)
 
         return y
-
-
-
-class WrappedLayer(object):
-    """
-        This class is used to intercept a normal application of a layer
-        to do something else. This class owns almost nothing and returns
-        attributes and methods of its layer.
-
-        Note: One limitation is that a normal interception will be done by writing
-        an fprop method. Its accepted_kwargs_fprop will have to be case specific
-        and written by hand since we do not inherit form AbsLayer (doing so would
-        mean losing crucial stuff from the __getattribute__ below).
-    """
-    def __init__(self, layer):
-        self.layer = layer
-
-
-    def __getattribute__(self, name):
-        """
-            Any called attribute or method will return the one of the wrapped layer
-            if it is not defined in this class.
-        """
-        try:
-            return object.__getattribute__(self, name)
-        except AttributeError:
-            return self.layer.__getattribute__(name)
-
 
 
 if __name__ == "__main__":

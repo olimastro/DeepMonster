@@ -1,4 +1,4 @@
-import inspect
+import inspect, copy
 import numpy as np
 import theano
 import theano.tensor as T
@@ -6,17 +6,20 @@ import theano.tensor as T
 from baselayers import Layer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
+from utils import flatten
 
 
 class ScanLayer(Layer):
     """
-        General class for layers that has to deal with scan. This Layer by itself cannot do any application
+        General class for layers that has to deal with scan.
+        This Layer by itself cannot do any application
         on its own. It has to be subclassed by a class that needs to implement a step
         It works in tandem with RecurrentLayer.
 
-        In general, a subclass of ScanLayer will have to subclass ScanLayer and another class.
-        The LSTM for exemple applies a dot through time, so it has the effective application
-        of a fullyconnected. You want the information of the fullyconnected for shape propagation.
+        In general, a subclass of ScanLayer will have to subclass ScanLayer and
+        another class. The LSTM for exemple applies a dot through time, so it
+        has the effective application of a fullyconnected. You want the
+        information of the fullyconnected for shape propagation.
     """
     # TODO: There is a problem with how the arguments are passed to the step function.
     # If there is another norm that requires params and you want to have it optional with
@@ -25,12 +28,13 @@ class ScanLayer(Layer):
     @property
     def non_sequences(self):
         """
-            This takes care to infer the arguments to give as non seq to the step function.
-            The step functions takes as non seq positional arguments (such as the weight
-            matrix) and kwargs (such as batch_norm parameters)
+            This takes care to infer the arguments to give as non seq to the
+            step function.
+            The step functions takes as non seq positional arguments
+            (such as the weight matrix) and kwargs (such as batch_norm parameters)
         """
         step_arg_list = inspect.getargspec(self.step).args
-        param_names = [x for x in self.param_dict.keys()]
+        param_names = self.param_dict.keys()
 
         slice_len = len(param_names)
         sublist = []
@@ -45,16 +49,34 @@ class ScanLayer(Layer):
         return non_seq
 
 
+    # making sure that there is a default value
+    @property
+    def deterministic(self):
+        return getattr(self, '_deterministic', False)
+
+    @deterministic.setter
+    def deterministic(self, value):
+        assert value is True or value is False
+        self._deterministic = value
+
+
+    def fprop(self, *args, **kwargs):
+        # technically, it could be routed to the apply method, but this feels safer
+        raise NotImplementedError("A ScanLayer does not have an fprop method! It "+\
+                                  "is not meant to be used on its own.")
+
+
     def step(self):
         """
             Every theano scan has a step!
 
-            *** The arguments in step NEED to have the same name as the parameters, meaning
-            if you do a T.dot(z, U) U is linked to self.U at runtime.
+            *** The arguments in step NEED to have the same name as the parameters,
+            meaning if you do a T.dot(z, U) U is linked to self.U at runtime.
 
-            REMINDER: Even if U used in step can be referenced by self.U, because of the
-            arcanes of scan, we need to give it as an argument to the step function in
-            the list of non_sequences. That's mainly why this whole jibber jabber class is for.
+            REMINDER: Even if U used in step can be referenced by self.U,
+            because of the arcanes of scan, we need to give it as an argument
+            to the step function in the list of non_sequences.
+            That's mainly why this whole jibber jabber class is for.
         """
         pass
 
@@ -70,8 +92,9 @@ class ScanLayer(Layer):
             # if any wrapping layer hacked self.step, it probably hacked
             # the non_sequences list. We want these changes to be preserved
             non_sequences = self.scan_namespace['non_sequences']
-        elif non_sequences is None :
+        else:
             non_sequences = self.non_sequences
+
         if outputs_info is None:
             outputs_info = self.get_outputs_info()
         namespace = {
@@ -82,44 +105,34 @@ class ScanLayer(Layer):
         self.scan_namespace = namespace
 
 
-    def before_scan(self, *args, **kwargs):
+    def before_scan(self, sequences, outputs_info=None):
         """
             Do before scan manipulations and populate the scan namespace.
 
             This is basically the beginning of the fprop and receives as
             input what is being propagated from the layer below.
         """
-        pass
+        self.set_scan_namespace(sequences, outputs_info=outputs_info)
 
 
     def scan(self):
-        # if there is a MissingInputError coming from a ScanLayer, be wary
-        # that it could be because you have created a variable in the
-        # step function (like it happens in batch norm) and strict is True.
-        # Or some other scan shenanigans
-        strict = False if self.batch_norm else True
         rval, updates = theano.scan(
             self.step,
             sequences=self.scan_namespace['sequences'],
             non_sequences=self.scan_namespace['non_sequences'],
             outputs_info=self.scan_namespace['outputs_info'],
-            strict=strict)
+            strict=True)
 
         return rval, updates
 
 
     def after_scan(self, scanout, updates):
         """
-            Do manipulations after scan
+            Do manipulations after scan and drop the updates list
         """
         # this is to preserve somewhere all the output a scanlayer might do
         self.outputs_info = tuple(scanout) if (isinstance(scanout, list) \
                 or isinstance(scanout, tuple)) else (scanout,)
-        # needed for batch norm
-        if not hasattr(self, '_updates'):
-            self._updates = [updates]
-        else:
-            self._updates.extend(updates)
         return scanout
 
 
@@ -152,11 +165,6 @@ class ScanLayer(Layer):
                 - scan
                 - do things after scan
         """
-        #NOTE: this assignment has been switched to RecurrentLayer.fprop as it should be
-        # this is not very clean and could lead to error, but is there a better way to
-        # propagate this information into the step function of scan?
-        # self.deterministic = kwargs.pop('deterministic', False)
-
         self.before_scan(*args, **kwargs)
         # BROKEN, anyway, never noticed a time gain, only a memory blow up
         if False and self.time_size is not None:
@@ -172,8 +180,8 @@ class ScanLayer(Layer):
 
 class ScanLSTM(ScanLayer, FullyConnectedLayer):
     """
-        LSTM implemented with the matrix being 4 times the dimensions so it can be sliced
-        between the 4 gates.
+        LSTM implemented with the matrix being 4 times the dimensions so it can
+        be sliced between the 4 gates.
     """
     # small attribute reminder
     def _get_activation(self):
@@ -276,13 +284,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         else :
             h = o * T.tanh(c)
 
-        # same as the error message in batch norm, next time this is called
-        # at deterministic=False it wont use the batch norm stat
-        if False and self.batch_norm and not deterministic and not hasattr(self,'_updates'):
-            updates = self.bn_updates
-        else:
-            updates = []
-        return [h, c], updates
+        return [h, c], []
 
 
     def get_outputs_info(self, n):
@@ -296,7 +298,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         sequences = [x]
         outputs_info = self.get_outputs_info(n_sample) if outputs_info is None \
                 else outputs_info
-        self.set_scan_namespace(sequences, outputs_info)
+        super(ScanLSTM, self).before_scan(sequences, outputs_info)
 
 
     def after_scan(self, scanout, updates):
@@ -308,11 +310,12 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
 class ScanConvLSTM(ScanLSTM, ConvLayer):
     """
-        ConvLSTM implementation where the time dot product is changed by a convolution operator
-        half padded (do not change the dimensions)
+        ConvLSTM implementation where the time dot product is changed by a
+        convolution operator half padded (do not change the dimensions)
 
-        Some parameters could technically not be subclassed here again, however kewords are more
-        clear and explicit to conv operation (such as num_filters) instead of output_dims
+        Some parameters could technically not be subclassed here again, however
+        kewords are more clear and explicit to conv operation
+        (such as num_filters) instead of output_dims
     """
     def __init__(self, filter_size, num_filters, **kwargs):
         ConvLayer.__init__(self, filter_size, num_filters, **kwargs)

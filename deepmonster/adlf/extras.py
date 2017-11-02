@@ -1,7 +1,7 @@
 import theano
 import theano.tensor as T
 
-from baselayers import AbsLayer, WrappedLayer
+from baselayers import AbsLayer
 
 
 class Reshape(AbsLayer):
@@ -90,53 +90,57 @@ class GlobalAveragePooling(AbsLayer):
 
 
 
-class AddConditioning(WrappedLayer):
-    """
-        Insert into the channel axis additionnal information.
-        Typically used for example when wanting to condition
-        the layer on the class information
-    """
+class AddConditioning:
     def __init__(self, *args, **kwargs):
-        self.nb_class = kwargs.pop('nb_class')
-        super(AddConditioning, self).__init__(*args, **kwargs)
+        raise NotImplementedError("This class is broken")
 
-
-    @property
-    def accepted_kwargs_fprop(self):
-        kwargs = self.layer.accepted_kwargs_fprop
-        kwargs.update('conditions_on')
-        return kwargs
-
-
-    # for now the only valid conditioning is the class
-    # information being passed as integer, but it could be
-    # extended.
-    def fprop(self, x, conditions_on=None, **kwargs):
-        i = -1 if x.ndim in [2,3] else -3
-        shape = [x.shape[j] for j in range(x.ndim)]
-        shape[i] = self.nb_class
-
-        conditioning = T.zeros(tuple(shape), dtype=x.dtype)
-
-        if x.ndim == 2:
-            conditioning = T.inc_subtensor(conditioning[T.arange(x.shape[0]), conditions_on], 1.)
-            x = T.set_subtensor(x[:,-self.nb_class:], conditioning)
-
-        elif x.ndim == 3:
-            conditioning = T.inc_subtensor(conditioning[:, T.arange(x.shape[0]), conditions_on], 1.)
-            x = T.set_subtensor(x[:,:,-self.nb_class:], conditioning)
-
-        elif x.ndim == 4:
-            conditioning = T.inc_subtensor(conditioning[T.arange(x.shape[0]), conditions_on, :, :],
-                                           1.)
-            x = T.set_subtensor(x[:,-self.nb_class:,:,:], conditioning)
-
-        elif x.ndim == 5:
-            conditioning = T.inc_subtensor(conditioning[:, T.arange(x.shape[0]), conditions_on,:,:],
-                                           1.)
-            x = T.set_subtensor(x[:,:,-self.nb_class:,:,:], conditioning)
-
-        return self.layer.fprop(x, **kwargs)
+#class AddConditioning(WrappedLayer):
+#    """
+#        Insert into the channel axis additionnal information.
+#        Typically used for example when wanting to condition
+#        the layer on the class information
+#    """
+#    def __init__(self, *args, **kwargs):
+#        self.nb_class = kwargs.pop('nb_class')
+#        super(AddConditioning, self).__init__(*args, **kwargs)
+#
+#
+#    @property
+#    def accepted_kwargs_fprop(self):
+#        kwargs = self.layer.accepted_kwargs_fprop
+#        kwargs.update('conditions_on')
+#        return kwargs
+#
+#
+#    # for now the only valid conditioning is the class
+#    # information being passed as integer, but it could be
+#    # extended.
+#    def fprop(self, x, conditions_on=None, **kwargs):
+#        i = -1 if x.ndim in [2,3] else -3
+#        shape = [x.shape[j] for j in range(x.ndim)]
+#        shape[i] = self.nb_class
+#
+#        conditioning = T.zeros(tuple(shape), dtype=x.dtype)
+#
+#        if x.ndim == 2:
+#            conditioning = T.inc_subtensor(conditioning[T.arange(x.shape[0]), conditions_on], 1.)
+#            x = T.set_subtensor(x[:,-self.nb_class:], conditioning)
+#
+#        elif x.ndim == 3:
+#            conditioning = T.inc_subtensor(conditioning[:, T.arange(x.shape[0]), conditions_on], 1.)
+#            x = T.set_subtensor(x[:,:,-self.nb_class:], conditioning)
+#
+#        elif x.ndim == 4:
+#            conditioning = T.inc_subtensor(conditioning[T.arange(x.shape[0]), conditions_on, :, :],
+#                                           1.)
+#            x = T.set_subtensor(x[:,-self.nb_class:,:,:], conditioning)
+#
+#        elif x.ndim == 5:
+#            conditioning = T.inc_subtensor(conditioning[:, T.arange(x.shape[0]), conditions_on,:,:],
+#                                           1.)
+#            x = T.set_subtensor(x[:,:,-self.nb_class:,:,:], conditioning)
+#
+#        return self.layer.fprop(x, **kwargs)
 
 
 

@@ -1,3 +1,4 @@
+import numpy as np
 import theano
 import theano.tensor as T
 from initializations import Constant
@@ -56,39 +57,52 @@ def weight_norm(layer, train_g=None):
 
 
 
-def batch_norm(x, betas, gammas, bn_mean_only=False):
-    # TODO: make spatial batch_norm optional
-    if x.ndim == 2:
-        axis = 1
-        pattern = ('x',0)
-    elif x.ndim == 4 :
-        axis = [0, 2, 3] # this implies spatial batch norm
-        pattern = ('x',0,'x','x')
+def batch_norm(x, betas, gammas, mean=None, std=None,
+               mean_only=False, axis='auto', eps=1e-5):
+    eps = np.float32(eps)
+    assert (mean is None and std is None) or \
+            (not mean is None and not std is None)
+    if axis == 'auto':
+        if x.ndim == 2:
+            axis = (0,)
+        elif x.ndim == 4 :
+            axis = (0,2,3,)
+        else:
+            raise ValueError("Dims {} in batch norm?".format(x.ndim))
+    pattern = []
+    j = 0
+    for i in range(x.ndim):
+        if i in axis:
+            pattern.append('x')
+        else:
+            pattern.append(j)
+            j += 1
+
+    bn_mean = x.mean(axis=axis, keepdims=True)
+    def parse_bg(v):
+        # useless mean but we need to know its pattern for parsing
+        if isinstance(v, (int, float)):
+            return v * T.ones_like(bn_mean)
+        return v.dimshuffle(*pattern)
+
+    betas = parse_bg(betas)
+    gammas = parse_bg(gammas)
+
+    if not mean_only:
+        bn_std = T.sqrt(T.mean(T.sqr(x - bn_mean), axis=axis, keepdims=True))
     else:
-        raise ValueError("Dims {} in batch norm?".format(x.ndim))
+        bn_std = T.ones_like(bn_mean)
 
-    mean = x.mean(axis=axis, keepdims=True)
-    if not bn_mean_only :
-        var = T.mean(T.sqr(x - mean), axis=axis, keepdims=True)
-    else :
-        var = theano.tensor.ones_like(mean)
+    def apply(x, mean, std):
+        return gammas * ((x - mean) / (std + eps)) + betas
 
-    if betas == 0 :
-        pass
-    elif betas.ndim == 1:
-        betas = betas.dimshuffle(pattern)
-    elif betas.ndim == 3:
-        betas = betas.dimshuffle((x.ndim-3)*('x',)+(0,1,2,))
-
-    if gammas == 1:
-        pass
+    if mean is None:
+        rx = apply(x, bn_mean, bn_std)
+        rm = bn_mean
+        rs = bn_std
     else:
-        gammas = gammas.dimshuffle(pattern)
+        rx = apply(x, mean, std)
+        rm = None
+        rs = None
 
-    var_corrected = var + 1e-6
-    y = theano.tensor.nnet.bn.batch_normalization(
-        inputs=x, gamma=gammas, beta=betas,
-        mean=mean,
-        std=theano.tensor.sqrt(var_corrected),
-        mode="low_mem")
-    return y, mean, var
+    return rx, rm, rs

@@ -258,25 +258,6 @@ class Conv3DLayer(ConvLayer) :
         return ((x - mean) / std) * gammas + betas
 
 
-# Utilities classes to enable convlayers on a 5D tensors by surrounding their
-# fprop by reshapes. Collapse batch and time axis together
-class ConvLayer5D(ConvLayer):
-    def fprop(self, x, **kwargs):
-        if x.ndim == 5:
-            x, xshp = utils.collapse_time_on_batch(x)
-            out = super(ConvLayer5D, self).fprop(x, **kwargs)
-            out = utils.expand_time_from_batch(out, xshp)
-        else:
-            # act normal
-            out = super(ConvLayer5D, self).fprop(x, **kwargs)
-        return out
-
-
-# according to the MRO the only thing it inherits from ConvLayer5D is the fprop
-class DeConvLayer5D(ConvLayer5D, DeConvLayer):
-    pass
-
-
 
 if __name__ == "__main__":
     from extras import Dimshuffle
