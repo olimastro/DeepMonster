@@ -221,8 +221,8 @@ class Layer(AbsLayer):
 
     def fprop(self, x, wn_init=False, deterministic=False, **kwargs):
         """
-            fprop of this class is meant to deal with all the various inference / training phase
-            or normalization scheme a layer could want
+            fprop of this class is meant to deal with all the various inference
+            / training phase or normalization scheme a layer could want
         """
 
         # deterministic is a 'fundamental' keyword and potentially can be used or not
@@ -269,60 +269,22 @@ class Layer(AbsLayer):
             })
 
 
-    # for this class, this is a useless wrapper to _bn_vars.
-    # for RNN, both are not the same
-    #@property
-    #def bn_vars(self):
-    #    return getattr(self, '_bn_vars')
-
-    #@property
-    #def _bn_vars(self):
-    #    return getattr(self, '_bn_vars', [])
-
-    #@_bn_vars.setter
-    #def _bn_vars(self, value):
-    #    self._bn_vars = value
-
-
-    def add_bn_vars(self, var, name):
+    def tag_bn_vars(self, var, name):
+        # tag the graph so popstats can use it
         var.name = name
-        # check for key collision
-        #for v in self._bn_vars:
-        #    if name == v.name:
-        #        raise RuntimeError("{} being reused in batch norm".format(name)+\
-        #                           ", please make all the keys unique")
         setattr(var.tag, 'bn_statistic', name)
-        #self._bn_vars.append(var)
-
-
-    #def fetch_bn_vars(self, key):
-    #    for v in self.bn_vars:
-    #        if key in v.tag.bntag and 'mean' in v.tag.bntag:
-    #            mean = v
-    #        if key in v.tag.bntag and 'invstd' in v.tag.bntag:
-    #            invstd = v
-    #    if mean is None or invstd is None:
-    #        raise RuntimeError("Could not fetch batch norm variables!")
-    #    # cannot use premade types since we don't know in advance
-    #    rmean = T.TensorType('float32', (False,) * mean.ndim)(
-    #        self.prefix + '_' + mean.tag.bntag)
-    #    rinvstd = T.TensorType('float32', (False,) * invstd.ndim)(
-    #        self.prefix + '_' + mean.tag.bntag)
-
-    #    # need to store them somewhere
-    #    self.input_bn_vars = [rmean, rinvstd]
-    #    return rmean, rinvstd
 
 
     def bn(self, x, betas=None, gammas=None, key='_', deterministic=False):
         """
             BN is the king of pain in the ass especially in the case of RNN
             (which is actually why this whole library was written for at first).
-            We have two modes, training (deterministic=False) and testing
-            (deterministic=True).
 
-            The betas and gammas cannot always be fetched through self
-            because of..... scan!!!!!
+            BN is to be used with get_inference_graph in popstats at inference phase.
+            It will compute the batch statistics from a dataset and replace in the
+            theano graph the tagged bnstat with the computed values.
+
+            All the deterministic logic is therefore deprecated here.
         """
         # make sure the format of the key is _something_
         if key != '_':
@@ -331,22 +293,21 @@ class Layer(AbsLayer):
             if '_' != key[-1]:
                 key = key + '_'
 
+        #if deterministic:
+        #    print "WARNING: deterministic=True is deprecated in Layer.bn and has"+\
+        #            " no effect"
 
-        if deterministic:
-            raise NotImplementedError("Dont do bn at det=True")
-            mean, var = self.fetch_bn_vars(key)
-        else:
-            mean, var = (None, None,)
+        mean, std = (None, None,)
 
         if betas is None:
             betas = getattr(self, 'betas', 0.)
         if gammas is None:
             gammas = getattr(self, 'gammas', 1.)
-        rval, mean, var = batch_norm(x, betas, gammas, mean, var)
+        rval, mean, std = batch_norm(x, betas, gammas, mean, std)
 
         if not deterministic:
-            self.add_bn_vars(mean, 'mean' + key + self.prefix)
-            self.add_bn_vars(var, 'var' + key + self.prefix)
+            self.tag_bn_vars(mean, 'mean' + key + self.prefix)
+            self.tag_bn_vars(std, 'std' + key + self.prefix)
 
         return rval
     ###
@@ -405,17 +366,6 @@ class RecurrentLayer(AbsLayer):
     @property
     def params(self):
         return self.upwardlayer.params + self.scanlayer.params
-
-    #@property
-    #def bn_updates(self):
-    #    updt = getattr(self.upwardlayer,'bn_updates',[])
-    #    orderedupdt = getattr(self.scanlayer,'_updates',[])
-    #    if isinstance(orderedupdt, list):
-    #        updt += orderedupdt
-    #    else:
-    #        # it is an OrderedUpdate
-    #        updt = updt + [item for item in orderedupdt.iteritems()]
-    #    return updt
 
     @property
     def input_dims(self):

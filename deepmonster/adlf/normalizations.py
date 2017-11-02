@@ -57,10 +57,11 @@ def weight_norm(layer, train_g=None):
 
 
 
-def batch_norm(x, betas, gammas, mean=None, var=None,
+def batch_norm(x, betas, gammas, mean=None, std=None,
                mean_only=False, axis='auto', eps=1e-5):
-    assert (mean is None and var is None) or \
-            (not mean is None and not var is None)
+    eps = np.float32(eps)
+    assert (mean is None and std is None) or \
+            (not mean is None and not std is None)
     if axis == 'auto':
         if x.ndim == 2:
             axis = (0,)
@@ -88,21 +89,20 @@ def batch_norm(x, betas, gammas, mean=None, var=None,
     gammas = parse_bg(gammas)
 
     if not mean_only:
-        bn_var = T.mean(T.sqr(x - bn_mean), axis=axis, keepdims=True)
+        bn_std = T.sqrt(T.mean(T.sqr(x - bn_mean), axis=axis, keepdims=True))
     else:
-        bn_var = T.ones_like(bn_mean)
-    bn_var += np.float32(eps)
+        bn_std = T.ones_like(bn_mean)
 
-    def apply(x, mean, var):
-        return gammas * ((x - mean) / var) + betas
+    def apply(x, mean, std):
+        return gammas * ((x - mean) / (std + eps)) + betas
 
     if mean is None:
-        rx = apply(x, bn_mean, bn_var)
+        rx = apply(x, bn_mean, bn_std)
         rm = bn_mean
-        rv = bn_var
+        rs = bn_std
     else:
-        rx = apply(x, mean, var)
+        rx = apply(x, mean, std)
         rm = None
-        rv = None
+        rs = None
 
-    return rx, rm, rv
+    return rx, rm, rs

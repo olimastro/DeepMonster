@@ -49,28 +49,6 @@ class ScanLayer(Layer):
         return non_seq
 
 
-    #@property
-    #def nb_bn_vars(self):
-    #    """
-    #        The nb of batch norm vars created in the step function should be
-    #        related to 1) the specifics of the rnn layer being implemented
-    #        and 2) the rnn-bn implementation.
-    #    """
-    #    return 0
-
-
-    # overwrite Layer.bn_vars
-    # for RNN, bn_vars are the whole after scan bn vars
-    # _bn_vars are per time step batch norm variables
-    #@property
-    #def bn_vars(self):
-    #    return getattr(self, 'bn_vars', [])
-
-    #@bn_vars.setter
-    #def bn_vars(self, value):
-    #    self.bn_vars = value
-
-
     # making sure that there is a default value
     @property
     def deterministic(self):
@@ -119,8 +97,6 @@ class ScanLayer(Layer):
 
         if outputs_info is None:
             outputs_info = self.get_outputs_info()
-        #if self.batch_norm:
-        #    outputs_info += self.get_bn_outputs_info()
         namespace = {
             'sequences' : sequences,
             'outputs_info' : outputs_info,
@@ -136,72 +112,10 @@ class ScanLayer(Layer):
             This is basically the beginning of the fprop and receives as
             input what is being propagated from the layer below.
         """
-        #if self.batch_norm and self.deterministic:
-        #    # remember old step if we recall this graph
-        #    self.old_step = copy.copy(self.step)
-        #    # first hack the step func
-        #    self.step = self.bn_step_decorator(self.step)
-        #    # second put all these bn vars as input
-        #    sequences = self.fetch_bn_vars('all') + sequences
-        #elif hasattr(self, 'old_step'):
-        #    self.step = self.old_step
         self.set_scan_namespace(sequences, outputs_info=outputs_info)
 
 
-    #def bn_step_decorator(self, step):
-    #    """
-    #        This is necessary so when scan looks at the arguments
-    #        of the step function, it finds all the theano bn vars
-    #        even though in this code I will pass them through other
-    #        means.
-    #    """
-    #    def bn_step(*args, **kwargs):
-    #        argz = args[self.nb_bn_vars:]
-    #        self.bn_args = args[:self.nb_bn_vars]
-    #        rval = step(*argz, **kwargs)
-    #        return rval
-    #    return bn_step
-
-
-    #def get_bn_outputs_info(self):
-    #    """
-    #        When we track batch norm variables created inside the step
-    #        function, we need to get them out of scan. It will require
-    #        to link them as `None` on the input side of the step
-    #    """
-    #    return [None for i in range(self.nb_bn_vars)]
-
-
-    #def track_bn_vars(self, scanout):
-    #    """
-    #        Retrieve the bn vars from the output list
-    #    """
-    #    if hasattr(self, 'bn_vars'):
-    #        print "WARNING: this layer {} already had bn_vars being ".format(
-    #            self.prefix) + "being tracked and they are being overwritten"
-    #    i = len(scanout) - self.nb_bn_vars
-    #    self.bn_vars = scanout[i:]
-    #    return scanout[:i]
-
-
-    #def fetch_bn_vars(self, key):
-    #    """
-    #        RNNs have multiple bn_vars to fetch and insert in the graph,
-    #        each subclass is to define its own
-    #    """
-    #    # default away?
-    #    if key == 'all':
-    #        return []
-    #    # when fetching, the arguments have to be in the same order
-
-
-
     def scan(self):
-        # if there is a MissingInputError coming from a ScanLayer, be wary
-        # that it could be because you have created a variable in the
-        # step function (like it happens in batch norm) and strict is True.
-        # Or some other scan shenanigans
-        #strict = False if self.batch_norm else True
         rval, updates = theano.scan(
             self.step,
             sequences=self.scan_namespace['sequences'],
@@ -216,8 +130,6 @@ class ScanLayer(Layer):
         """
             Do manipulations after scan and drop the updates list
         """
-        #if self.batch_norm:
-        #    scanout = self.track_bn_vars(scanout)
         # this is to preserve somewhere all the output a scanlayer might do
         self.outputs_info = tuple(scanout) if (isinstance(scanout, list) \
                 or isinstance(scanout, tuple)) else (scanout,)
@@ -289,18 +201,6 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         super(ScanLSTM, self).attribute_error(attr_name, message)
 
 
-    #@property
-    #def nb_bn_vars(self):
-    #    return 6
-
-
-    #def fetch_bn_vars(self, key):
-    #    if key == 'all':
-    #        keys = ('x', 'h', 'c')
-    #        return flatten([super(ScanLayer, self).fetch_bn_vars(k) for k in keys])
-    #    return super(ScanLayer, self).fetch_bn_vars(key)
-
-
     def batch_norm_addparams(self):
         # 0.1 scaling as used in RNN BN paper
             self.param_dict.update({
@@ -309,10 +209,6 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
                 'c_gammas' : [self.output_dims, 'ones', 0.1],
                 'c_betas' : [self.output_dims, 'zeros'],
             })
-
-
-    #def get_bn_outputs_info(self):
-    #    return [None for i in range(6)]
 
 
     def param_dict_initialization(self):
@@ -388,7 +284,6 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         else :
             h = o * T.tanh(c)
 
-        #return [h, c] + self._bn_vars, []
         return [h, c], []
 
 
