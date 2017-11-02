@@ -1,3 +1,4 @@
+import numpy as np
 import theano
 import theano.tensor as T
 from initializations import Constant
@@ -56,22 +57,52 @@ def weight_norm(layer, train_g=None):
 
 
 
-def batch_norm(x, betas, gammas, mean=None, invstd=None, axes='auto'):
-    assert (mean is None and invstd is None) or \
-            (not mean is None and not invstd is None)
-    if axes == 'auto':
+def batch_norm(x, betas, gammas, mean=None, var=None,
+               mean_only=False, axis='auto', eps=1e-5):
+    assert (mean is None and var is None) or \
+            (not mean is None and not var is None)
+    if axis == 'auto':
         if x.ndim == 2:
-            axes = 'per-activation'
+            axis = (0,)
         elif x.ndim == 4 :
-            axes = 'spatial'
+            axis = (0,2,3,)
         else:
             raise ValueError("Dims {} in batch norm?".format(x.ndim))
-    if mean is None:
-        rx, rm, rv = T.nnet.bn.batch_normalization_train(x, gammas, betas, axes=axes)
+    pattern = []
+    j = 0
+    for i in range(x.ndim):
+        if i in axis:
+            pattern.append('x')
+        else:
+            pattern.append(j)
+            j += 1
+
+    bn_mean = x.mean(axis=axis, keepdims=True)
+    def parse_bg(v):
+        # useless mean but we need to know its pattern for parsing
+        if isinstance(v, (int, float)):
+            return v * T.ones_like(bn_mean)
+        return v.dimshuffle(*pattern)
+
+    betas = parse_bg(betas)
+    gammas = parse_bg(gammas)
+
+    if not mean_only:
+        bn_var = T.mean(T.sqr(x - bn_mean), axis=axis, keepdims=True)
     else:
-        var = T.sqr(1. / invstd)
+        bn_var = T.ones_like(bn_mean)
+    bn_var += np.float32(eps)
+
+    def apply(x, mean, var):
+        return gammas * ((x - mean) / var) + betas
+
+    if mean is None:
+        rx = apply(x, bn_mean, bn_var)
+        rm = bn_mean
+        rv = bn_var
+    else:
+        rx = apply(x, mean, var)
         rm = None
         rv = None
-        rx = T.nnet.bn.batch_normalization_test(x, gammas, betas, mean, var, axes=axes)
 
     return rx, rm, rv

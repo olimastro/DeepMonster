@@ -28,18 +28,12 @@ def log_sum_exp(x, axis=1):
 
 
 # http://kbyanc.blogspot.ca/2007/07/python-aggregating-function-arguments.html
-def arguments(args_to_pop=None) :
-    """Returns tuple containing dictionary of calling function's
-    named arguments and a list of calling function's unnamed
-    positional arguments.
-    """
-    posname, kwname, args = inspect.getargvalues(inspect.stack()[1][0])[-3:]
-    posargs = args.pop(posname, [])
-    args.update(args.pop(kwname, []))
-    if args_to_pop is not None :
-        for arg in args_to_pop :
-            args.pop(arg)
-    return args, posargs
+def find_func_kwargs(func):
+    argspec = inspect.getargspec(func)
+    if argspec.defaults is not None:
+        return argspec.args[-len(argspec.defaults):]
+    else:
+        return []
 
 
 def collapse_time_on_batch(x):
@@ -89,14 +83,16 @@ def parse_tuple(tup, length=1) :
     return (tup,) * length
 
 
-def flatten(container):
+def flatten(x):
     # flatten list made of tuple or list
-    for i in container:
-        if isinstance(i, (list, tuple)):
-            for j in flatten(i):
-                yield j
-        else:
-            yield i
+    def _flatten(container):
+        for i in container:
+            if isinstance(i, (list, tuple)):
+                for j in flatten(i):
+                    yield j
+            else:
+                yield i
+    return list(_flatten(x))
 
 
 def get_gradients_list(feedforwards, y):

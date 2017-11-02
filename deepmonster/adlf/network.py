@@ -32,6 +32,7 @@ class Feedforward(object):
             'input_dims',
             'output_dims',
             'get_outputs_info',
+            '_recurrent_warning',
         ]
 
         set_attr = kwargs.pop('set_attr', True)
@@ -99,6 +100,13 @@ class Feedforward(object):
             func(i, layer, *args, **kwargs)
 
 
+    def _recurrent_warning(self, msg):
+        # this is a poor way to do it but it works!
+        if msg != getattr(self, 'last_msg', ''):
+            print msg
+            self.last_msg = msg
+
+
     # ---- THESE METHODS ARE PROPAGATED WHEN CALLED ----
     # exemple : foo = Feedforward(layers, 'foo', **fooconfig)
     #           foo.switch_for_inference()
@@ -110,7 +118,9 @@ class Feedforward(object):
 
     def initialize(self, i, layer, **kwargs):
         if self._have_been_init:
-            print self.prefix + " already have been init, supressing this init call"
+            msg = self.prefix + " already have been init, supressing this init call"
+            self._recurrent_warning(msg)
+            return
         if i == 0 :
             if not hasattr(layer, 'input_dims'):
                 raise ValueError("The very first layer of this chain needs its input_dims!")
@@ -199,7 +209,7 @@ def find_attributes(L, a):
         L = [L]
     attributes = []
     for l in L:
-        attributes += list(flatten(getattr(l, a, [])))
+        attributes += flatten(getattr(l, a, []))
     return attributes
 
 

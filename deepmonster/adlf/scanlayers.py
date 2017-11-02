@@ -6,17 +6,20 @@ import theano.tensor as T
 from baselayers import Layer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
+from utils import flatten
 
 
 class ScanLayer(Layer):
     """
-        General class for layers that has to deal with scan. This Layer by itself cannot do any application
+        General class for layers that has to deal with scan.
+        This Layer by itself cannot do any application
         on its own. It has to be subclassed by a class that needs to implement a step
         It works in tandem with RecurrentLayer.
 
-        In general, a subclass of ScanLayer will have to subclass ScanLayer and another class.
-        The LSTM for exemple applies a dot through time, so it has the effective application
-        of a fullyconnected. You want the information of the fullyconnected for shape propagation.
+        In general, a subclass of ScanLayer will have to subclass ScanLayer and
+        another class. The LSTM for exemple applies a dot through time, so it
+        has the effective application of a fullyconnected. You want the
+        information of the fullyconnected for shape propagation.
     """
     # TODO: There is a problem with how the arguments are passed to the step function.
     # If there is another norm that requires params and you want to have it optional with
@@ -25,9 +28,10 @@ class ScanLayer(Layer):
     @property
     def non_sequences(self):
         """
-            This takes care to infer the arguments to give as non seq to the step function.
-            The step functions takes as non seq positional arguments (such as the weight
-            matrix) and kwargs (such as batch_norm parameters)
+            This takes care to infer the arguments to give as non seq to the
+            step function.
+            The step functions takes as non seq positional arguments
+            (such as the weight matrix) and kwargs (such as batch_norm parameters)
         """
         step_arg_list = inspect.getargspec(self.step).args
         param_names = self.param_dict.keys()
@@ -45,14 +49,26 @@ class ScanLayer(Layer):
         return non_seq
 
 
-    @property
-    def nb_bn_vars(self):
-        """
-            The nb of batch norm vars created in the step function should be
-            related to 1) the specifics of the rnn layer being implemented
-            and 2) the rnn-bn implementation.
-        """
-        return 0
+    #@property
+    #def nb_bn_vars(self):
+    #    """
+    #        The nb of batch norm vars created in the step function should be
+    #        related to 1) the specifics of the rnn layer being implemented
+    #        and 2) the rnn-bn implementation.
+    #    """
+    #    return 0
+
+
+    # overwrite Layer.bn_vars
+    # for RNN, bn_vars are the whole after scan bn vars
+    # _bn_vars are per time step batch norm variables
+    #@property
+    #def bn_vars(self):
+    #    return getattr(self, 'bn_vars', [])
+
+    #@bn_vars.setter
+    #def bn_vars(self, value):
+    #    self.bn_vars = value
 
 
     # making sure that there is a default value
@@ -69,19 +85,20 @@ class ScanLayer(Layer):
     def fprop(self, *args, **kwargs):
         # technically, it could be routed to the apply method, but this feels safer
         raise NotImplementedError("A ScanLayer does not have an fprop method! It "+\
-                                  "is not meant to be used on its own")
+                                  "is not meant to be used on its own.")
 
 
     def step(self):
         """
             Every theano scan has a step!
 
-            *** The arguments in step NEED to have the same name as the parameters, meaning
-            if you do a T.dot(z, U) U is linked to self.U at runtime.
+            *** The arguments in step NEED to have the same name as the parameters,
+            meaning if you do a T.dot(z, U) U is linked to self.U at runtime.
 
-            REMINDER: Even if U used in step can be referenced by self.U, because of the
-            arcanes of scan, we need to give it as an argument to the step function in
-            the list of non_sequences. That's mainly why this whole jibber jabber class is for.
+            REMINDER: Even if U used in step can be referenced by self.U,
+            because of the arcanes of scan, we need to give it as an argument
+            to the step function in the list of non_sequences.
+            That's mainly why this whole jibber jabber class is for.
         """
         pass
 
@@ -102,8 +119,8 @@ class ScanLayer(Layer):
 
         if outputs_info is None:
             outputs_info = self.get_outputs_info()
-        if self.batch_norm:
-            outputs_info += self.get_bn_outputs_info()
+        #if self.batch_norm:
+        #    outputs_info += self.get_bn_outputs_info()
         namespace = {
             'sequences' : sequences,
             'outputs_info' : outputs_info,
@@ -119,59 +136,64 @@ class ScanLayer(Layer):
             This is basically the beginning of the fprop and receives as
             input what is being propagated from the layer below.
         """
-        if self.batch_norm and self.deterministic:
-            # remember old step if we recall this graph
-            self.old_step = copy.copy(self.step)
-            # first hack the step func
-            self.step = self.bn_step_decorator(self.step)
-            # second put all these bn vars as input
-            sequences = self.fetch_bn_vars() + sequences
-        elif hasattr(self, 'old_step'):
-            self.step = self.old_step
+        #if self.batch_norm and self.deterministic:
+        #    # remember old step if we recall this graph
+        #    self.old_step = copy.copy(self.step)
+        #    # first hack the step func
+        #    self.step = self.bn_step_decorator(self.step)
+        #    # second put all these bn vars as input
+        #    sequences = self.fetch_bn_vars('all') + sequences
+        #elif hasattr(self, 'old_step'):
+        #    self.step = self.old_step
         self.set_scan_namespace(sequences, outputs_info=outputs_info)
 
 
-    def bn_step_decorator(self, step):
-        """
-            This is necessary so when scan looks at the arguments
-            of the step function, it finds all the theano bn vars
-            even though in this code I will pass them through other
-            means.
-        """
-        def bn_step(*args, **kwargs):
-            argz = args[:self.nb_bn_vars]
-            rval = step(*argz, **kwargs)
-            return rval
-        return bn_step
+    #def bn_step_decorator(self, step):
+    #    """
+    #        This is necessary so when scan looks at the arguments
+    #        of the step function, it finds all the theano bn vars
+    #        even though in this code I will pass them through other
+    #        means.
+    #    """
+    #    def bn_step(*args, **kwargs):
+    #        argz = args[self.nb_bn_vars:]
+    #        self.bn_args = args[:self.nb_bn_vars]
+    #        rval = step(*argz, **kwargs)
+    #        return rval
+    #    return bn_step
 
 
-    def get_bn_outputs_info(self):
-        """
-            When we track batch norm variables created inside the step
-            function, we need to get them out of scan. It will require
-            to link them as `None` on the input side of the step
-        """
-        return [None for i in range(self.nb_bn_vars)]
+    #def get_bn_outputs_info(self):
+    #    """
+    #        When we track batch norm variables created inside the step
+    #        function, we need to get them out of scan. It will require
+    #        to link them as `None` on the input side of the step
+    #    """
+    #    return [None for i in range(self.nb_bn_vars)]
 
 
-    def track_bn_vars(self, scanout):
-        """
-            Retrieve the bn vars from the output list
-        """
-        if hasattr(self, 'bn_vars'):
-            print "WARNING: this layer {} already had bn_vars being ".format(
-                self.prefix) + "being tracked and they are being overwritten"
-        i = len(scanout) - self.nb_bn_vars
-        self.bn_vars = scanout[i:]
-        return scanout[:i]
+    #def track_bn_vars(self, scanout):
+    #    """
+    #        Retrieve the bn vars from the output list
+    #    """
+    #    if hasattr(self, 'bn_vars'):
+    #        print "WARNING: this layer {} already had bn_vars being ".format(
+    #            self.prefix) + "being tracked and they are being overwritten"
+    #    i = len(scanout) - self.nb_bn_vars
+    #    self.bn_vars = scanout[i:]
+    #    return scanout[:i]
 
 
-    def fetch_bn_vars(self):
-        """
-            RNNs have multiple bn_vars to fetch and insert in the graph,
-            each subclass is to define its own
-        """
-        return []
+    #def fetch_bn_vars(self, key):
+    #    """
+    #        RNNs have multiple bn_vars to fetch and insert in the graph,
+    #        each subclass is to define its own
+    #    """
+    #    # default away?
+    #    if key == 'all':
+    #        return []
+    #    # when fetching, the arguments have to be in the same order
+
 
 
     def scan(self):
@@ -194,8 +216,8 @@ class ScanLayer(Layer):
         """
             Do manipulations after scan and drop the updates list
         """
-        if self.batch_norm:
-            scanout = self.track_bn_vars(scanout)
+        #if self.batch_norm:
+        #    scanout = self.track_bn_vars(scanout)
         # this is to preserve somewhere all the output a scanlayer might do
         self.outputs_info = tuple(scanout) if (isinstance(scanout, list) \
                 or isinstance(scanout, tuple)) else (scanout,)
@@ -231,11 +253,6 @@ class ScanLayer(Layer):
                 - scan
                 - do things after scan
         """
-        #NOTE: this assignment has been switched to RecurrentLayer.fprop as it should be
-        # this is not very clean and could lead to error, but is there a better way to
-        # propagate this information into the step function of scan?
-        # self.deterministic = kwargs.pop('deterministic', False)
-
         self.before_scan(*args, **kwargs)
         # BROKEN, anyway, never noticed a time gain, only a memory blow up
         if False and self.time_size is not None:
@@ -251,8 +268,8 @@ class ScanLayer(Layer):
 
 class ScanLSTM(ScanLayer, FullyConnectedLayer):
     """
-        LSTM implemented with the matrix being 4 times the dimensions so it can be sliced
-        between the 4 gates.
+        LSTM implemented with the matrix being 4 times the dimensions so it can
+        be sliced between the 4 gates.
     """
     # small attribute reminder
     def _get_activation(self):
@@ -272,17 +289,16 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         super(ScanLSTM, self).attribute_error(attr_name, message)
 
 
-    @property
-    def nb_bn_vars(self):
-        return 6
+    #@property
+    #def nb_bn_vars(self):
+    #    return 6
 
 
-    def fetch_bn_vars(self):
-        keys = ('x', 'h', 'c')
-        rval = []
-        for k in keys:
-            rval += super(ScanLayer, self).fetch_bn_vars(k)
-        return rval
+    #def fetch_bn_vars(self, key):
+    #    if key == 'all':
+    #        keys = ('x', 'h', 'c')
+    #        return flatten([super(ScanLayer, self).fetch_bn_vars(k) for k in keys])
+    #    return super(ScanLayer, self).fetch_bn_vars(key)
 
 
     def batch_norm_addparams(self):
@@ -295,8 +311,8 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
             })
 
 
-    def get_bn_outputs_info(self):
-        return [None for i in range(6)]
+    #def get_bn_outputs_info(self):
+    #    return [None for i in range(6)]
 
 
     def param_dict_initialization(self):
@@ -371,9 +387,9 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
             h = o * T.tanh(c_normal)
         else :
             h = o * T.tanh(c)
-        bn_vars = self.find_bn_vars(h)
 
-        return [h, c] + bn_vars, []
+        #return [h, c] + self._bn_vars, []
+        return [h, c], []
 
 
     def get_outputs_info(self, n):
@@ -399,11 +415,12 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
 class ScanConvLSTM(ScanLSTM, ConvLayer):
     """
-        ConvLSTM implementation where the time dot product is changed by a convolution operator
-        half padded (do not change the dimensions)
+        ConvLSTM implementation where the time dot product is changed by a
+        convolution operator half padded (do not change the dimensions)
 
-        Some parameters could technically not be subclassed here again, however kewords are more
-        clear and explicit to conv operation (such as num_filters) instead of output_dims
+        Some parameters could technically not be subclassed here again, however
+        kewords are more clear and explicit to conv operation
+        (such as num_filters) instead of output_dims
     """
     def __init__(self, filter_size, num_filters, **kwargs):
         ConvLayer.__init__(self, filter_size, num_filters, **kwargs)
