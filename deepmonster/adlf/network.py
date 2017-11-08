@@ -33,6 +33,7 @@ class Feedforward(object):
             'output_dims',
             'get_outputs_info',
             '_recurrent_warning',
+            '__repr__',
         ]
 
         set_attr = kwargs.pop('set_attr', True)
@@ -64,6 +65,10 @@ class Feedforward(object):
                 return result
             return newfunc
         return attr
+
+
+    def __repr__(self):
+        return self.prefix
 
 
     def dict_of_hyperparam_default(self) :
@@ -168,7 +173,7 @@ class Feedforward(object):
         concatenation_tags = kwargs.pop('concatenation_tags', {})
         assert all([isinstance(k, int) for k in concatenation_tags.keys()])
         for key, val in concatenation_tags.iteritems():
-            if not (isinstance(val, list) or isinstance(val, tuple)) or not isinstance(val[1], int):
+            if not isinstance(val, (list, tuple)) or len(val) == 1 or not isinstance(val[1], int):
                 val = [val, None]
             else:
                 assert len(val) == 2
@@ -205,7 +210,9 @@ class Feedforward(object):
 
 def find_attributes(L, a):
     # return a FLAT list of all attributes found
-    if not isinstance(L, (list, tuple)):
+    if isinstance(L, set):
+        L = list(L)
+    elif not isinstance(L, (list, tuple)):
         L = [L]
     attributes = []
     for l in L:
@@ -216,7 +223,8 @@ def find_attributes(L, a):
 def find_nets(localz):
     # this is for the lazy :)
     # give locals() as argument to the script defining the networks
-    return [x for x in localz if isinstance(x, Feedforward)]
+    return [item for key, item in localz.iteritems() \
+            if isinstance(item, Feedforward) and key != 'Feedforward']
 
 
 if __name__ == '__main__':

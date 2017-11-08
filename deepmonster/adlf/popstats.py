@@ -10,7 +10,20 @@ from theano.scan_module import scan_utils
 #from blocks.serialization import load
 
 def equizip(*sequences):
-    sequences = list(map(list, sequences))
+    # check if they are all iterable
+    new_sequences = []
+    for sequence in sequences:
+        if isinstance(sequence, (set, list, tuple)):
+            new_sequences += [sequence]
+        else:
+            new_sequences += [[sequence]]
+    assert len(new_sequences) == len(sequences)
+    sequences = new_sequences
+
+    try:
+        sequences = list(map(list, sequences))
+    except TypeError:
+        import ipdb; ipdb.set_trace()
     assert all(len(sequence) == len(sequences[0]) for sequence in sequences[1:])
     return zip(*sequences)
 

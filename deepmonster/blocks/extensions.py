@@ -528,8 +528,8 @@ class FancyReconstruct(Reconstruct):
 
 class FrameGen(FileHandlingExt):
     def __init__(self, model, datastream, **kwargs) :
+        kwargs.setdefault('before_first_epoch', True)
         super(FrameGen, self).__init__(**kwargs)
-
         self.model = model
         self.datastream = datastream #fuel object
 
@@ -570,6 +570,27 @@ class AdjustSharedVariable(EpochExtension):
 
 
 
+class Ipdb(SimpleExtension):
+    def __init__(self, *args, **kwargs):
+        # Use this extention to interrupt training and monitor
+        # it on the fly. If action_obj is given, it will execute
+        # a do method on it.
+        self.action_obj = kwargs.pop('action', None)
+        kwargs.setdefault('after_batch', True)
+        super(Ipdb, self).__init__(*args, **kwargs)
+
+
+    def do(self, which_callback, *args):
+        # most likely we are using this in debugging so lets not
+        # interrupt the flow for some error
+        if self.action_obj is not None:
+            try:
+                rval = self.action_obj.do()
+            except AttributeError as e:
+                print "{} e was raised, ignoring it".format(e)
+        import ipdb; ipdb.set_trace()
+
+
 # borrowed from Kyle
 def prepare_png(X):
     def color_grid_vis(X):
@@ -607,61 +628,3 @@ def prepare_png(X):
         return bw_grid_vis(X)
     else:
         raise ValueError("What the hell is this channel shape?")
-
-
-
-class SwitchModelType(SimpleExtension):
-    # This extention should be placed first in the list and will
-    # take care of the switched between a training model and inference model
-    def __init__(self, model, inputs=None, outputs=None, data_stream=None, n_batch=None, **kwargs):
-        kwargs.setdefault('after_epoch', True)
-        kwargs.setdefault('before_epoch', True)
-        super(SwitchModelType, self).__init__(**kwargs)
-        self.model = model
-        self.inputs = inputs
-        self.input_names = [v.name for v in inputs]
-        self.data_stream = data_stream
-
-        if data_stream is not None:
-            for part in self.model.model_parts:
-                part.modify_bnflag('n_batch', n_batch)
-
-            graph = ComputationGraph(outputs)
-            bn_mean = [v for v in graph.variables if v.name is not None and 'bn_mean' in v.name]
-            bn_popmu = [v for v in graph.shared_variables if v.name is not None and 'pop_mu' in v.name]
-            self.bn_popmu = bn_popmu
-            updates = []
-
-            for pop_mu in bn_popmu:
-                this_mean = None
-                name = pop_mu.name.split('_pop_mu')[0]
-                for mean in bn_mean :
-                    if name in mean.name:
-                        this_mean = mean
-                        break
-                if this_mean is not None:
-                    #raise ValueError('Failed to connect updates for batchnorm inference')
-                    updates += [(pop_mu, this_mean)]
-
-            print updates
-            self.compute_pop_stats = theano.function(
-                inputs, [], updates=updates, on_unused_input='ignore')
-
-
-    def do(self, which_callback, *args) :
-        if which_callback == 'before_epoch':
-            self.model.switch_for_training()
-        elif which_callback == 'after_epoch':
-            self.model.switch_for_inference()
-
-            if self.data_stream is not None:
-                for pop_mu in self.bn_popmu:
-                    shape = pop_mu.get_value().shape
-                    pop_mu.set_value(np.zeros(shape).astype(np.float32))
-
-                for batch in self.data_stream.get_epoch_iterator(as_dict=True):
-                    batch = dict_subset(batch, self.input_names)
-                    self.compute_pop_stats(**batch)
-
-                for part in self.model.model_parts:
-                    part.modify_bnflag('bn_flag', 0.)

@@ -46,6 +46,7 @@ def expand_time_from_batch(x, orgshp):
     return x.reshape((orgshp[0], orgshp[1],) + xshp[1:])
 
 def stack_time(x, y):
+    assert y.ndim > x.ndim
     tup = ('x',) + tuple(range(x.ndim))
     return T.concatenate([x.dimshuffle(*tup), y], axis=0)
 
