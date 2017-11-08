@@ -4,7 +4,6 @@ import theano.tensor as T
 
 import utils
 from activations import Activation
-from graph import graph_traversal
 from initializations import Initialization
 from normalizations import weight_norm, batch_norm
 
@@ -109,6 +108,25 @@ class RandomLayer(AbsLayer):
 
 
 
+class EmptyLayer(AbsLayer):
+    """
+        Fall through layer where nothing is changed.
+    """
+    def __init__(self, dims=None):
+        super(EmptyLayer, self).__init__(dims, dims)
+
+    def set_io_dims(self, tup):
+        if not hasattr(self, "input_dims"):
+            self.input_dims = tup
+        else:
+            assert self.input_dims == tup
+        self.output_dims = tup
+
+    def fprop(self, x, **kwargs):
+        return x
+
+
+
 class Layer(AbsLayer):
     """
         Layer class with initializable parameters and possible normalizations
@@ -201,6 +219,17 @@ class Layer(AbsLayer):
             self.bn_mean_only = False
 
 
+    def delete_params(self, param_name):
+        # param is the param ATTRIBUTE name such as self.W, not its
+        # name as in the theano shared var name
+        # make sure to remove everywhere it could appear
+        param = getattr(self, param_name)
+        self.params.remove(param)
+        self.param_dict.pop(param_name)
+        delattr(self, param_name)
+        del param
+
+
     def apply_bias(self, x):
         """
             Why a method even for this?? Because for example convolution
@@ -275,7 +304,7 @@ class Layer(AbsLayer):
         setattr(var.tag, 'bn_statistic', name)
 
 
-    def bn(self, x, betas=None, gammas=None, key='_', deterministic=False):
+    def bn(self, x, betas=None, gammas=None, key='_', deterministic=False, axis='auto'):
         """
             BN is the king of pain in the ass especially in the case of RNN
             (which is actually why this whole library was written for at first).
@@ -303,7 +332,7 @@ class Layer(AbsLayer):
             betas = getattr(self, 'betas', 0.)
         if gammas is None:
             gammas = getattr(self, 'gammas', 1.)
-        rval, mean, std = batch_norm(x, betas, gammas, mean, std)
+        rval, mean, std = batch_norm(x, betas, gammas, mean, std, axis=axis)
 
         if not deterministic:
             self.tag_bn_vars(mean, 'mean' + key + self.prefix)
@@ -351,7 +380,8 @@ class RecurrentLayer(AbsLayer):
         self.mode = mode
         self.upwardlayer = upwardlayer
         self.scanlayer = scanlayer
-        self.time_collapse = time_collapse
+        self.time_collapse = False if isinstance(upwardlayer, EmptyLayer) else \
+                time_collapse
 
     @property
     def prefix(self):

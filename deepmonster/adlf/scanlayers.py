@@ -60,6 +60,18 @@ class ScanLayer(Layer):
         self._deterministic = value
 
 
+    # if the rnn is not driven by an input signal, might want
+    # to switch the bn application in its implementation in step
+    @property
+    def batch_norm_on_x(self):
+        return getattr(self, '_batch_norm_on_x', True)
+
+    @batch_norm_on_x.setter
+    def batch_norm_on_x(self, value):
+        assert value is True or value is False
+        self._batch_norm_on_x = value
+
+
     def fprop(self, *args, **kwargs):
         # technically, it could be routed to the apply method, but this feels safer
         raise NotImplementedError("A ScanLayer does not have an fprop method! It "+\
@@ -240,8 +252,8 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
     def step(self, x_,
              h_, c_,
              U, xh_betas,
-             x_gammas=None, h_gammas=None,
-             c_gammas=None, c_betas=None):
+             c_gammas=None, c_betas=None,
+             h_gammas=None, x_gammas=None):
         deterministic = self.deterministic
         if x_.ndim == 4 and h_.ndim == 2:
             x_ = x_.flatten(2)
@@ -260,9 +272,17 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
         preact = self.op(h_, U)
 
+        #import ipdb; ipdb.set_trace()
         if self.batch_norm :
-            x_normal = self.bn(x_, xh_betas, x_gammas, '_x', deterministic)
-            h_normal = self.bn(preact, 0, h_gammas, '_h', deterministic)
+            if self.batch_norm_on_x:
+                x_normal = self.bn(x_, xh_betas, x_gammas, '_x', deterministic)
+                h_normal = self.bn(preact, 0, h_gammas, '_h', deterministic)
+            else:
+                if x_gammas is None:
+                    x_normal = x_
+                else:
+                    x_normal = self.bn(x_, 0, x_gammas, '_x', deterministic)
+                h_normal = self.bn(preact, xh_betas, h_gammas, '_h', deterministic)
             preact = x_normal + h_normal
         else :
             xh_betas = xh_betas.dimshuffle(*('x',0) + ('x',) * (preact.ndim-2))
@@ -350,6 +370,9 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
         else :
             preact = T.nnet.conv2d(h, U, border_mode='half')
         return preact
+
+
+
 
 
     # FIX THAT if needed

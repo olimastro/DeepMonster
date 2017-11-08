@@ -222,6 +222,7 @@ class Conv3DLayer(ConvLayer) :
 
 
     def fprop(self, x, **kwargs):
+        # x incoming is in tbc01
         # all this class assumes bct01
         if self.dimshuffle_inp:
             x = x.dimshuffle(1,2,0,3,4)
@@ -231,31 +232,9 @@ class Conv3DLayer(ConvLayer) :
         return out
 
 
-    def bn(self, x, betas, gammas, key='', deterministic=False):
-        pattern = ('x', 0, 'x', 'x', 'x')
-        axis = [0, 2, 3, 4]
-        mean = x.mean(axis=axis, keepdims=True)
-        if not self.bn_mean_only :
-            var = T.mean(T.sqr(x - mean), axis=axis, keepdims=True)
-        else :
-            var = theano.tensor.ones_like(mean)
-        var_corrected = var + 1e-6
-
-        if betas == 0 :
-            pass
-        elif betas.ndim == 1:
-            betas = betas.dimshuffle(pattern)
-        elif betas.ndim == 3:
-            betas = betas.dimshuffle(
-                'x', 0, 'x', 1, 2)
-
-        if gammas == 1:
-            pass
-        else:
-            gammas = gammas.dimshuffle(pattern)
-
-        std = T.sqrt(var_corrected)
-        return ((x - mean) / std) * gammas + betas
+    def bn(self, *args, **kwargs):
+        kwargs.update({'axis': (0, 2, 3, 4,)})
+        return super(Conv3DLayer, self).bn(*args, **kwargs)
 
 
 
