@@ -25,7 +25,10 @@ class Experiment(EpochExtension):
     """
     def __init__(self, name, local_path=None, network_path=None, extra_infos='',
                  crush_old=False, full_dump=False, **kwargs):
-        local_path = os.environ['EXPFILES_OUT'] if local_path is None else local_path
+        # EXPFILES_OUT has priority if set
+        local_path = os.environ['EXPFILES_OUT'] if os.environ.has_key('EXPFILES_OUT') else local_path
+        exp_group = os.environ['EXPFILES_GROUP'] if os.environ.has_key('EXPFILES_GROUP') else ''
+        local_path = os.path.join(local_path, exp_group)
         kwargs.setdefault('before_training', True)
         super(Experiment, self).__init__(**kwargs)
 
