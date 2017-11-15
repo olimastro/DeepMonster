@@ -95,7 +95,10 @@ def create_movie(movie_npz):
         raise ValueError("Shape of channels should be 1 or 3")
     movie_npz = (movie_npz*255).astype('uint8')
 
-    local_dir = os.environ['TMPDIR']+"/.tmp/"
+    try:
+        local_dir = os.environ['TMPDIR']+"/.tmp/"
+    except KeyError:
+        local_dir = "/tmp/.tmp/"
     call(['mkdir','--parents',local_dir])
 
     k = 0 ; J = movie_npz.shape[0]
