@@ -19,32 +19,34 @@ class Feedforward(object):
         unexpected behaviors. If you want to protect a method (meaning it won't get
         propagated), put it in the list self.protected_method.
     """
+    __protected_method = [
+        '__init__',
+        'params',
+        'propagate',
+        'fprop',
+        'input_dims',
+        'output_dims',
+        'get_outputs_info',
+        '_recurrent_warning',
+        '__repr__',
+    ]
+
     def __init__(self, layers, prefix, **kwargs):
         self.layers = layers
         self.prefix = prefix
-        self.dict_of_hyperparam = kwargs
+        #self.dict_of_hyperparam = kwargs
         self.fprop_passes = {}
-        self.protected_method = [
-            '__init__',
-            'params',
-            'propagate',
-            'fprop',
-            'input_dims',
-            'output_dims',
-            'get_outputs_info',
-            '_recurrent_warning',
-            '__repr__',
-        ]
 
         set_attr = kwargs.pop('set_attr', True)
         if set_attr :
-            self.set_attributes()
+            self.set_attributes(kwargs)
 
         # would be useful but try to not break all the past scripts
-        self._have_been_init = False
+        self._has_been_init = False
         if not kwargs.pop('no_init', False):
+            self.set_io_dims()
             self.initialize()
-            self._have_been_init = True
+            self._has_been_init = True
 
 
     def __getattribute__(self, name):
@@ -53,7 +55,7 @@ class Feedforward(object):
             in the class
         """
         def isprotected(name):
-            return any([f == name for f in self.protected_method])
+            return any([f == name for f in self.__protected_method])
 
         if name == 'initialize':
             print "Initializing", self.prefix
@@ -94,7 +96,14 @@ class Feedforward(object):
 
     @property
     def input_dims(self):
-        return self.layers[-1].input_dims
+        return self.layers[0].input_dims
+
+
+    def _recurrent_warning(self, msg):
+        # this is a poor way to do it but it works!
+        if msg != getattr(self, 'last_msg', ''):
+            print msg
+            self.last_msg = msg
 
 
     def propagate(self, func, *args, **kwargs):
@@ -105,33 +114,34 @@ class Feedforward(object):
             func(i, layer, *args, **kwargs)
 
 
-    def _recurrent_warning(self, msg):
-        # this is a poor way to do it but it works!
-        if msg != getattr(self, 'last_msg', ''):
-            print msg
-            self.last_msg = msg
-
-
     # ---- THESE METHODS ARE PROPAGATED WHEN CALLED ----
     # exemple : foo = Feedforward(layers, 'foo', **fooconfig)
     #           foo.switch_for_inference()
     #           will propagate switch_for_inference to all layers
-    def set_attributes(self, i, layer) :
+    def set_attributes(self, i, layer, dict_of_hyperparam) :
         layer.prefix = self.prefix + str(i)
-        layer.set_attributes(self.dict_of_hyperparam)
+        layer.set_attributes(dict_of_hyperparam)
+
+
+    def set_io_dims(self, i, layer, tup=None):
+        if i == 0 :
+            if not hasattr(layer, 'input_dims') and tup is None:
+                raise ValueError("The very first layer of this chain needs its input_dims!")
+            input_dims = getattr(layer, 'input_dims', (None,))
+            if None in input_dims:
+                dims = tup
+            else:
+                dims = input_dims
+        else:
+            dims = self.layers[i-1].output_dims
+        layer.set_io_dims(dims)
 
 
     def initialize(self, i, layer, **kwargs):
-        if self._have_been_init:
+        if self._has_been_init:
             msg = self.prefix + " already have been init, supressing this init call"
             self._recurrent_warning(msg)
             return
-        if i == 0 :
-            if not hasattr(layer, 'input_dims'):
-                raise ValueError("The very first layer of this chain needs its input_dims!")
-            layer.set_io_dims(layer.input_dims)
-        else:
-            layer.set_io_dims(self.layers[i-1].output_dims)
         layer.initialize(**kwargs)
 
 

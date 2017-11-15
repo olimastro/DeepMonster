@@ -33,8 +33,8 @@ class WrappedLayer(object):
 
     def __setattr__(self, name, value):
         """
-            Any called attribute or method will return the one of the wrapped layer
-            if it is not defined in this class.
+            Any regular setters will set the inner layer. Use below method to
+            set on the wrapper.
         """
         setattr(self.layer, name, value)
 
@@ -44,6 +44,30 @@ class WrappedLayer(object):
             The way to set an attr directly on the wrapped class
         """
         return object.__setattr__(self, name, value)
+
+
+
+class WrapFprop(WrappedLayer):
+    """
+        Simplest wrapper that intercept the fprop by
+        applying its own fprop. Its usage is to fool anything else
+        looking at it since it returns everything of the layer
+        it is intercepting.
+    """
+    def __init__(self, layer, intercepting_layer):
+        self.setattr('intercepting_layer', intercepting_layer)
+        super(WrapFprop, self).__init__(layer)
+
+
+    def fprop(self, x, **kwargs):
+        return self.layer.fprop(
+            self.intercepting_layer.fprop(x))
+
+
+    def __getattr__(self, name):
+        # if here it means everything failed, maybe the user
+        # really wanted to access something unique to the intercept
+        return self.intercepting_layer.__getattribute__(name)
 
 
 

@@ -90,6 +90,48 @@ class GlobalAveragePooling(AbsLayer):
 
 
 
+class InputInjectingLayer(AbsLayer):
+    """
+        Inject additional inputs when fproping
+    """
+    def __init__(self, *args, **kwargs):
+        super(InputInjectingLayer, self).__init__(*args, **kwargs)
+        self.inputs_to_inject = []
+
+    def add_extra_input(self, x):
+        if isinstance(x, list):
+            self.inputs_to_inject += x
+        else:
+            self.inputs_to_inject += [x]
+
+    def clear_extra_inputs(self):
+        self.inputs_to_inject = []
+
+    def apply(self, *args):
+        raise NotImplementedError("InputInjectingLayer is an interface, subclass it")
+
+
+class ConcatLayer(InputInjectingLayer):
+    def __init__(self, axis, *args, **kwargs):
+        self.axis = axis
+        super(ConcatLayer, self).__init__(*args, **kwargs)
+
+    def apply(self, x):
+        return T.concatenate([x] + self.inputs_to_inject, axis=self.axis)
+
+
+class SummationLayer(InputInjectingLayer):
+    def apply(self, x):
+        return sum([x] + self.inputs_to_inject)
+
+
+class MultiplicationLayer(InputInjectingLayer):
+    def apply(self, x):
+        for i in self.inputs_to_inject:
+            x *= i
+        return x
+
+
 class AddConditioning:
     def __init__(self, *args, **kwargs):
         raise NotImplementedError("This class is broken")

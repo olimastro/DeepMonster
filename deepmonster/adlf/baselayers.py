@@ -116,7 +116,7 @@ class EmptyLayer(AbsLayer):
         super(EmptyLayer, self).__init__(dims, dims)
 
     def set_io_dims(self, tup):
-        if not hasattr(self, "input_dims"):
+        if None in self.input_dims:
             self.input_dims = tup
         else:
             assert self.input_dims == tup

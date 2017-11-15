@@ -1,7 +1,7 @@
 import numpy as np
 import theano
 import theano.tensor as T
-from baselayers import Layer
+from baselayers import Layer, RandomLayer
 
 
 class FullyConnectedLayer(Layer) :
@@ -49,15 +49,15 @@ class FullyConnectedOnLastTime(FullyConnectedLayer):
 
 
 
-class NoiseConditionalLayer(FullyConnectedLayer):
+class NoiseConditionalLayer(FullyConnectedLayer, RandomLayer):
     """
         This class takes x and apply a linear transform on it to expend it
         into mu, sigma and return mu + sigma * noise
     """
     def __init__(self, noise_type='gaussian', **kwargs):
         assert noise_type in ['gaussian', 'uniform']
-        super(NoiseConditionalLayer, self).__init__(**kwargs)
         self.noise_type = noise_type
+        super(NoiseConditionalLayer, self).__init__(**kwargs)
         self.activation = None
 
 
@@ -92,6 +92,10 @@ class NoiseConditionalLayer(FullyConnectedLayer):
             elif self.noise_type == 'uniform':
                 epsilon = self.rng_theano.uniform(size=mu.shape)
 
+        sigma = T.exp(0.5 * logsigma)
+        # we might want to track them
+        self._mu = mu
+        self._logsigma = logsigma
         noised_x = mu + sigma * epsilon
 
         return noised_x
