@@ -92,4 +92,8 @@ def mode2():
 
 
 if __name__ == '__main__':
-    mode2()
+    i = int(raw_input("mode1 or 2? (type an int or crash)"))
+    if i == 1:
+        mode1()
+    elif i == 2:
+        mode2()
