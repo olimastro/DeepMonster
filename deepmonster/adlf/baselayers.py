@@ -136,7 +136,7 @@ class Layer(AbsLayer):
     """
     def __init__(self, attr_error_tolerance='warn', initialization=Initialization({}),
                  prefix=None, use_bias=True, batch_norm=None, activation=None,
-                 weight_norm=None, train_g=None, **kwargs):
+                 conditional_batch_norm=None, weight_norm=None, train_g=None, **kwargs):
         super(Layer, self).__init__(**kwargs)
 
         self.attr_error_tolerance = attr_error_tolerance
@@ -145,6 +145,7 @@ class Layer(AbsLayer):
         self.prefix = prefix
         self.use_bias = use_bias
         self.batch_norm = batch_norm
+        self.conditional_batch_norm = conditional_batch_norm
         self.activation = activation
 
         self.weight_norm = weight_norm
@@ -219,15 +220,22 @@ class Layer(AbsLayer):
             self.bn_mean_only = False
 
 
-    def delete_params(self, param_name):
+    def delete_params(self, param_name, on_error='raise'):
         # param is the param ATTRIBUTE name such as self.W, not its
         # name as in the theano shared var name
         # make sure to remove everywhere it could appear
-        param = getattr(self, param_name)
-        self.params.remove(param)
-        self.param_dict.pop(param_name)
-        delattr(self, param_name)
-        del param
+        try:
+            param = getattr(self, param_name)
+            self.params.remove(param)
+            self.param_dict.pop(param_name)
+            delattr(self, param_name)
+            del param
+        except Exception as e:
+            if on_error == 'raise':
+                raise e
+            elif on_error == 'warn':
+                print "WARNING: Error while deleting parameter {} on {}".format(
+                    param_name, self.prefix) + ", ignoring."
 
 
     def apply_bias(self, x):
@@ -258,6 +266,8 @@ class Layer(AbsLayer):
         # used everywhere. The apply of a child method doesn't have to bother
         # all the time with it.
         kwargs.update({'deterministic':deterministic})
+        betas = kwargs.pop('betas', None)
+        gammas = kwargs.pop('gammas', None)
         try:
             preact = self.apply(x, **kwargs)
         except TypeError as e:
@@ -267,8 +277,10 @@ class Layer(AbsLayer):
             else:
                 raise e
 
-        if self.batch_norm:
-            preact = self.bn(preact, deterministic=deterministic)
+        if self.batch_norm or self.conditional_batch_norm:
+            if self.conditional_batch_norm:
+                assert betas is not None and gammas is not None
+            preact = self.bn(preact, betas, gammas, deterministic=deterministic)
         if wn_init:
             preact = self.init_wn(preact)
 
@@ -332,9 +344,13 @@ class Layer(AbsLayer):
             betas = getattr(self, 'betas', 0.)
         if gammas is None:
             gammas = getattr(self, 'gammas', 1.)
-        rval, mean, std = batch_norm(x, betas, gammas, mean, std, axis=axis)
+        rval, mean, std = batch_norm(x, betas, gammas, mean, std,
+                                     cbn=self.conditional_batch_norm,
+                                     mean_only=self.bn_mean_only,
+                                     axis=axis)
 
-        if not deterministic:
+        # do not tag on cbn
+        if not deterministic and not self.conditional_batch_norm:
             self.tag_bn_vars(mean, 'mean' + key + self.prefix)
             self.tag_bn_vars(std, 'std' + key + self.prefix)
 

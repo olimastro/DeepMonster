@@ -58,7 +58,7 @@ def weight_norm(layer, train_g=None):
 
 
 def batch_norm(x, betas, gammas, mean=None, std=None,
-               mean_only=False, axis='auto', eps=1e-4):
+               cbn=False, mean_only=False, axis='auto', eps=1e-4):
     eps = np.float32(eps)
     assert (mean is None and std is None) or \
             (not mean is None and not std is None)
@@ -85,8 +85,13 @@ def batch_norm(x, betas, gammas, mean=None, std=None,
             return v * T.ones_like(bn_mean)
         return v.dimshuffle(*pattern)
 
-    betas = parse_bg(betas)
-    gammas = parse_bg(gammas)
+    # so hacky
+    if cbn:
+        betas = betas.dimshuffle(0, 1, 'x', 'x')
+        gammas = betas.dimshuffle(0, 1, 'x', 'x')
+    else:
+        betas = parse_bg(betas)
+        gammas = parse_bg(gammas)
 
     if not mean_only:
         bn_std = T.mean(T.sqr(x - bn_mean), axis=axis, keepdims=True)
