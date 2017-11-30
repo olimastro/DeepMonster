@@ -2,6 +2,7 @@ import theano
 import theano.tensor as T
 
 from baselayers import AbsLayer
+from wrapped import WrappedLayer
 
 
 class Reshape(AbsLayer):
@@ -130,6 +131,28 @@ class MultiplicationLayer(InputInjectingLayer):
         for i in self.inputs_to_inject:
             x *= i
         return x
+
+
+class NetworkLayer(InputInjectingLayer):
+    """
+        Inject the result of a network's pass and recombine the result
+        and in the input of this layer in a certain fashion.
+    """
+    def __init__(self, network, combination_type, **kwargs):
+        self.network = network
+        self.combination_type = combination_type
+        super(NetworkLayer, self).__init__(**kwargs)
+
+    def add_extra_input(self, x):
+        if len(self.inputs_to_inject) == 1:
+            raise RuntimeError("No known network in deepmonster can handle "+\
+                               "lists as input, cannot add a new input to this network")
+        super(NetworkLayer, self).add_extra_input(x)
+
+    def apply(self, x):
+        y = self.network.fprop(self.inputs_to_inject[0])
+        self.combination_type.add_extra_input(y)
+        return self.combination_type.fprop(x)
 
 
 class AddConditioning:
