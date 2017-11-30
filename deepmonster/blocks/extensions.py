@@ -144,10 +144,21 @@ class FileHandlingExt(EpochExtension):
         file_format := a particular file_format a child extension would
         like to use. Ex.: SaveExperiment won't care, but Sample will.
     """
-    def __init__(self, full_dump=None, file_format='png', **kwargs):
+    def __init__(self, full_dump=None, file_format='png', suffix=None, **kwargs):
         super(FileHandlingExt, self).__init__(**kwargs)
         self.file_format = file_format
         self._full_dump = full_dump
+        if suffix is not None:
+            self.suffix = suffix
+
+
+    @property
+    def suffix(self):
+        return getattr(self, '_suffix', '')
+
+    @suffix.setter
+    def suffix(self, val):
+        self._suffix = val
 
 
     def do(self, which_callback, *args) :
@@ -353,15 +364,20 @@ def load_parameters(path, parameters) :
 
 
 class LogAndSaveStuff(FileHandlingExt):
-    def __init__(self, stuff_to_save, suffix='monitored', **kwargs) :
-        self.nan_guard = kwargs.pop('nan_guard', False)
-        super(LogAndSaveStuff, self).__init__(**kwargs)
-
         # this should be a list of strings of variables names to be saved
         # so we can follow their evolution over epochs
         # all the vars that we are trying to save should be numpy arrays!!
-        self.stuff_to_save = stuff_to_save
-        self.suffix = suffix
+    def __init__(self, arbitrary=[], train=[], valid=[], **kwargs) :
+        self.nan_guard = kwargs.pop('nan_guard', False)
+        super(LogAndSaveStuff, self).__init__(**kwargs)
+
+        def prefix_name(L, prefix):
+            return [prefix + '_' + name for name in L]
+        train = prefix_name(train, 'train')
+        valid = prefix_name(valid, 'valid')
+
+        self.stuff_to_save = arbitrary + train + valid
+        self._suffix = 'monitored'
 
 
     def _do(self, network_move=False) :
@@ -378,10 +394,10 @@ class LogAndSaveStuff(FileHandlingExt):
 
         else :
             try:
-                path = self.exp_obj.local_path + self.exp_obj.exp_name + '_monitored.pkl'
+                path = self.exp_obj.local_path + self.exp_obj.exp_name + '_{}.pkl'.format(self.suffix)
                 f = open(path, 'r')
             except IOError:
-                path = self.exp_obj.network_path + self.exp_obj.exp_name + '_monitored.pkl'
+                path = self.exp_obj.network_path + self.exp_obj.exp_name + '_{}.pkl'.format(self.suffix)
                 f = open(path, 'r')
             dictofstuff = pkl.load(f)
             f.close()
@@ -418,12 +434,13 @@ class Sample(FileHandlingExt):
     def __init__(self, model, **kwargs) :
         super(Sample, self).__init__(**kwargs)
         self.model = model
+        self._suffix = 'samples'
 
 
     def _do(self, network_move=False) :
         print "Sampling..."
         samples = self.model.sampling_function()
-        self.exp_obj.save(samples, 'samples', self.file_format, append_time=True,
+        self.exp_obj.save(samples, self.suffix, self.file_format, append_time=True,
                           network_move=network_move)
 
 
@@ -434,6 +451,7 @@ class Reconstruct(FileHandlingExt):
         self.model = model
         self.datastream = datastream #fuel object
         self.src_done = False
+        self._suffix = 'reconstructions'
 
 
     def _do(self, network_move=False) :
@@ -448,10 +466,10 @@ class Reconstruct(FileHandlingExt):
     def _do_save(self, x, reconstructions, network_move=False, only_one_src=False):
         if self.file_format == 'npz':
             out = np.concatenate((x[np.newaxis], reconstructions[np.newaxis]), axis=0)
-            self.exp_obj.save(out, 'reconstructions', 'npz',
+            self.exp_obj.save(out, self.suffix, 'npz',
                               append_time=True, network_move=network_move)
         else:
-            self.exp_obj.save(reconstructions, 'reconstructions', 'png', append_time=True,
+            self.exp_obj.save(reconstructions, self.suffix, 'png', append_time=True,
                               network_move=network_move)
             if self.src_done:
                 return
@@ -535,6 +553,7 @@ class FrameGen(FileHandlingExt):
         super(FrameGen, self).__init__(**kwargs)
         self.model = model
         self.datastream = datastream #fuel object
+        self._suffix = 'samples'
 
 
     def _do(self, network_move=False):
@@ -552,7 +571,7 @@ class FrameGen(FileHandlingExt):
 
         samples = self.model.sampling_function(batch)
 
-        self.exp_obj.save(samples, 'samples', 'npz', append_time=True,
+        self.exp_obj.save(samples, self.suffix, 'npz', append_time=True,
                           network_move=network_move)
 
 
