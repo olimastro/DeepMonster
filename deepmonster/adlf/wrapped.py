@@ -33,8 +33,8 @@ class WrappedLayer(object):
 
     def __setattr__(self, name, value):
         """
-            Any regular setters will set the inner layer. Use below method to
-            set on the wrapper.
+            Any regular setters will set the inner layer. Use this method to
+            set on the wrapper object itself.
         """
         setattr(self.layer, name, value)
 
@@ -68,6 +68,30 @@ class WrapFprop(WrappedLayer):
         # if here it means everything failed, maybe the user
         # really wanted to access something unique to the intercept
         return self.intercepting_layer.__getattribute__(name)
+
+
+
+class ConditionalBatchNorm(WrappedLayer):
+    def __init__(self, layer):
+        super(ConditionalBatchNorm, self).__init__(layer)
+        self.layer.conditional_batch_norm = True
+
+
+    def initialize(self):
+        self.layer.initialize()
+        self.layer.delete_params('betas', 'warn')
+        self.layer.delete_params('gammas', 'warn')
+
+
+    def fprop(self, x, **kwargs):
+        kwargs.update({'betas': self.cbn_betas,
+                       'gammas': self.cbn_gammas})
+        return self.layer.fprop(x, **kwargs)
+
+
+    def link_cbn_vars(self, betas, gammas):
+        self.setattr('cbn_betas', betas)
+        self.setattr('cbn_gammas', gammas)
 
 
 
