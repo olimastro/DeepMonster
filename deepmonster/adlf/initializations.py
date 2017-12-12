@@ -4,7 +4,7 @@ rng_np = np.random.RandomState(4321)
 
 
 def norm_weight_tensor(shape):
-    return np.random.normal(size=shape).astype('float32')
+    return rng_np.normal(size=shape).astype('float32')
 
 
 def orthogonal_weight_tensor(shape):
@@ -124,7 +124,7 @@ class Gaussian(object):
         self.std = std
 
     def __call__(self, shape):
-        return self.mu + self.std * np.random.randn(*shape).astype(np.float32)
+        return self.mu + self.std * rng_np.randn(*shape).astype(np.float32)
 
 
 class GaussianHe(object):
@@ -133,7 +133,7 @@ class GaussianHe(object):
         self.coeff = coeff
 
     def __call__(self, shape):
-        wt = np.random.normal(size=shape).astype('float32')
+        wt = rng_np.normal(size=shape).astype('float32')
         return wt * np.sqrt(2. / ((1. + self.coeff**2) * shape[self.axis]))
 
 

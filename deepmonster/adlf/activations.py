@@ -69,9 +69,22 @@ class Tanh(Activation) :
         return T.tanh(input_)
 
 
-class HardTanh(Activation):
+class ClipActivation(Activation) :
+    def __init__(self, high=1., low=None):
+        # if low is none, will take -high
+        self.high = high
+        if low is None:
+            low = -high
+        self.low = low
+        assert self.high > self.low
+
     def __call__(self, input_) :
-        return T.clip(input_, -1., 1.)
+        return T.clip(input_, self.low, self.high)
+
+class HardTanh(ClipActivation):
+    def __init__(self, **kwargs):
+        self.high = 1.
+        self.low = -1.
 
 
 class Identity(Activation) :
@@ -98,6 +111,13 @@ class GELU(Activation):
     def __call__(self, input_):
         return 0.5 * input_ * (1. + T.tanh(T.sqrt(2. / np.pi) * \
             (input_ + 0.044715 * input_**3)))
+
+
+class UnitNorm(Activation):
+    def __call__(self, input_):
+        # normalize as a unit vector the last axis
+        assert input_.ndim == 2
+        return input_ / T.sqrt(T.sum(input_**2, axis=1, keepdims=True))
 
 
 if __name__ == '__main__' :
