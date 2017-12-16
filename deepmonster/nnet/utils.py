@@ -4,8 +4,6 @@ import inspect, os, re, shutil, sys
 import theano
 import theano.tensor as T
 
-rng_np = np.random.RandomState(4321)
-
 def getftensor5():
     return T.TensorType('float32', (False,)*5)
 
@@ -25,6 +23,37 @@ def infer_odim_convtrans(i, k, s) :
 def log_sum_exp(x, axis=1):
     m = T.max(x, axis=axis)
     return m+T.log(T.sum(T.exp(x-m.dimshuffle(0,'x')), axis=axis))
+
+
+def assert_iterable_return_iterable(x, iter_type='tup'):
+    """Make sure that x is the iterable of said type
+    Watch out for the differences among the three,
+    ex.: if x=[3,3] => set(x)={3}
+
+    By default it will tuplify x
+
+    ***The term assert could be misleading as a typical use of this
+    util function is to MAKE OUT an iterable out of a single
+    object that is not for example. It will not crash if it
+    is not iterable.
+    """
+    assert iter_type in ['tup', 'list', 'set', 'keep']
+    iterable = {
+        'tup': tuple,
+        'list': list,
+        'set': set,
+    }
+    if not isinstance(x, (list, tuple, set)):
+        # the dummy wrapping in a tuple is necessary as those will
+        # actually try to iterate on the object x, which at this point we've
+        # found not to be iterable
+        if iter_type == 'keep':
+            raise TypeError("Cannot keep iterable type as it is not a simple iterable")
+        return iterable[iter_type]((x,))
+    if iter_type == 'keep':
+        return x
+    return iterable[iter_type](x)
+
 
 
 # http://kbyanc.blogspot.ca/2007/07/python-aggregating-function-arguments.html
