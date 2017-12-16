@@ -1,4 +1,4 @@
-from deepmonster.nnet.utils import assert_iterable_return_iterable
+from deepmonster.nnet.utils import assert_iterable_return_iterable, flatten
 from linkers import LinksHolder, VariableLink, GraphLink, TrackingLink
 
 def auto_add_links(func, *args, **kwargs):
@@ -14,6 +14,36 @@ def auto_add_links(func, *args, **kwargs):
         model.store_links(rval)
 
     return autoaddlinks
+
+
+def graph_defining_method(graph, var_names, auto_add_links=True):
+    """Model decorator around a method defining a graph. By giving
+    it a var_names list, it will fetch, as written in the code,
+    the name of the variables and associate them in the GraphLink
+
+    ***It needs locals() to be the returned value!
+    """
+    def real_decorator(func, *args, **kwargs):
+        def link_up_outputs(*args, **kwargs):
+            rval = func(*args, **kwargs)
+            assert isinstance(rval, dict), "Return locals() if using graph_defining_method "+\
+                    "decorator! (Actually any dict will silence this error)"
+
+            # first pick up the model variables for the graphlink
+            var_name_dict = {v_val: v_name for (v_name, v_val) in \
+                             rval.iteritems() if v_name in var_names}
+            graphlink = GraphLink(graph, var_name_dict)
+
+            # second, this method might also defined other links,
+            # act be default like auto_add_links
+            otherlinks = Model.filter_for_links(rval)
+            otherlinks.append(graphlink)
+
+            model = args[0]
+            model.store_links(otherlinks)
+
+        return link_up_outputs
+    return real_decorator
 
 
 class Model(object):
@@ -34,8 +64,13 @@ class Model(object):
     """
     def __init__(self, config, architectures):
         self.config = config
-        self.architectures = architectures
+        self.architectures = assert_iterable_return_iterable(architectures, 'list')
         self._linksholder = LinksHolder()
+
+
+    @property
+    def model_parameters(self):
+        return flatten([arch.params for arch in self.architectures])
 
 
     def build_fprop_graph(self):
@@ -92,10 +127,16 @@ class Model(object):
         return GraphLink(graph, var_name_dict)
 
 
+    def link_here(self, graph):
+        for link in self._linksholder:
+            if isinstance(link, GraphLink) and link.graph == graph:
+                return link.var_name_dict
+
+
     def fetch_var(self, var_name, graph=None):
         # if only the name of the variable is given, it will try
         # to fetch it among all the graph linkers
-        for link in self.linksholder:
+        for link in self._linksholder:
             if isinstance(link, GraphLink):
                 if graph is not None and link.graph == graph:
                     return link.get_var_wth_name(var_name)
@@ -115,4 +156,4 @@ class Model(object):
         all the links and return them, let's then have this do it for us on the
         namespace!
         """
-        return [val for val in locals_.values() if issubclass(val, VariableLink)]
+        return [val for val in locals_.values() if issubclass(val.__class__, VariableLink)]

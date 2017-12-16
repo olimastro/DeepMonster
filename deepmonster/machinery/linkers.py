@@ -45,6 +45,20 @@ class VariableLink(object):
         # it would make no sense to have the same var more than once?
         self.var = assert_iterable_return_iterable(var, 'set')
 
+    @property
+    def model_var(self):
+        # some var could be deep in a multiple Link hiearchy, this
+        # returns the raw model variable
+        var = self.var
+        while issubclass(var, VariableLink):
+            try:
+                var = var.var
+            except AttributeError:
+                raise AttributeError("Tried to find raw model variables "+\
+                                     "but stumbled upon a variableless link")
+        return var
+
+
     def sanity_check(self, otherlink):
         # this should raise an error if the test does not pass
         return
