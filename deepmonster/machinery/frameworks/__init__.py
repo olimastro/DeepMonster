@@ -14,7 +14,7 @@ class TheanoModel(Model):
         isinstance_check = [isinstance(c, ParametersLink) for c in costs]
         if any(isinstance_check):
             assert all(isinstance_check), "Some costs have parameters associated "+\
-                    "to them and others don't. All costs need to be binded."
+                    "to them and others don't. All costs need to be bound."
             grads = OrderedDict()
             for cost in costs:
                 grads.update(zip(cost.parameters,
