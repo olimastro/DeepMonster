@@ -1,5 +1,7 @@
-from deepmonster.nnet.utils import assert_iterable_return_iterable, flatten
-from linkers import LinksHolder, VariableLink, GraphLink, TrackingLink, StreamLink
+from . import Configurable
+from deepmonster.utils import assert_iterable_return_iterable, flatten
+from linkers import (LinksHelper, LinksHolder, Linker,
+                     GraphLink, TrackingLink, StreamLink)
 
 ### MODEL DECORATOR ###
 
@@ -20,7 +22,7 @@ def auto_add_links(func, *args, **kwargs):
     return autoaddlinks
 
 
-def graph_defining_method(cls, graph='', var_names=[], auto_add_links=True):
+def graph_defining_method(var_names, graph='', auto_add_links=True):
     """Model decorator around a method defining a graph. By giving
     it a var_names list, it will fetch, as written in the code,
     the name of the variables and associate them in the GraphLink
@@ -40,7 +42,7 @@ def graph_defining_method(cls, graph='', var_names=[], auto_add_links=True):
 
             # second, this method might also defined other links,
             # act be default like auto_add_links
-            otherlinks = Model.filter_for_links(rval)
+            otherlinks = LinksHelper.filter_linkers(rval.values(), Linker)
             otherlinks.append(graphlink)
 
             model = args[0]
@@ -52,7 +54,7 @@ def graph_defining_method(cls, graph='', var_names=[], auto_add_links=True):
 ###-----------------###
 
 
-class Model(object):
+class Model(Configurable):
     """A Model consists of different computation graphs
     stiched together from inputs to outputs.
 
@@ -66,17 +68,16 @@ class Model(object):
         the cost for example.
 
     This class is intended to solve these two flexibility
-    problems by using VariableLinkers as defined below.
+    problems by using Linkers and bookeeping decorators.
     """
-    def __init__(self, config, architectures):
-        self.config = config
-        self.architectures = assert_iterable_return_iterable(architectures, 'list')
+    def __init__(self, architecture, config):
+        super(Model, self).__init__(config)
+        self.architecture = architecture
         self.linksholder = LinksHolder()
-
 
     @property
     def model_parameters(self):
-        return flatten([arch.params for arch in self.architectures])
+        return flatten([arch.params for arch in self.architecture])
 
 
     def build_fprop_graph(self):
@@ -197,12 +198,3 @@ class Model(object):
             assign_target, assign_source, graph)
         return code_string
     ### ---------------------------------------------------- ###
-
-
-    @staticmethod
-    def filter_for_links(locals_):
-        """Typical usage is we are lazy, we don't want to sort out ourselves
-        all the links and return them, let's then have this do it for us on the
-        namespace!
-        """
-        return [val for val in locals_.values() if issubclass(val.__class__, VariableLink)]

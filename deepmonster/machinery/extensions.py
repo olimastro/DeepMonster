@@ -247,7 +247,7 @@ class DSMonitoringHelper(DefaultTrigger):
     def __init__(self, ext):
         super(DSMonitoringHelper, self).__init__(ext, 'set')
 
-    @ExtensionFactoryHelper.define_action_on(['variables','stream'])
+    @ExtFactoryHelper.define_action_on(['variables','stream'])
     def action_on_set(self, config, linkers):
         arg = config['set']
         variables = self.get_args_from_linkers(linkers, 'TrackingLink', arg)
@@ -262,7 +262,7 @@ class TDMonitoringHelper(DefaultTrigger):
     extensions = ['TrainingDataMonitoring']
     linkers = ['TrackingLink',]
 
-    @ExtensionFactoryHelper.define_action_on(['variables'])
+    @ExtFactoryHelper.define_action_on(['variables'])
     def action_for_variables(self, config, linkers):
         arg = 'train'
         variables = self.get_args_from_linkers(linkers, 'TrackingLink', arg)
@@ -292,7 +292,7 @@ class FunctionHelper(DefaultTrigger):
         return rval, ExtFactoryHelper.unique_filter_check
 
 
-    @ExtensionFactoryHelper.define_action_on(['func','datastream'])
+    @ExtFactoryHelper.define_action_on(['func','datastream'])
     def action_on_function(self, config, linkers):
         func, filter_check = self.fetch_optional_argument(config, 'function')
 
@@ -332,7 +332,7 @@ class ParametersHelper(ExtFactoryHelper):
         return rval, ExtFactoryHelper.unique_filter_check
 
 
-    @ExtensionFactoryHelper.define_action_on(['parameters'])
+    @ExtFactoryHelper.define_action_on(['parameters'])
     def action_on_params(self, config, linkers):
         parameters_set, filter_check = self.fetch_optional_argument(config, 'parameters_set')
 

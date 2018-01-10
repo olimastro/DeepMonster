@@ -1,17 +1,11 @@
-import copy
 import cPickle as pkl
 import numpy as np
 import os, socket, time
-import theano
-import theano.tensor as T
 
 from collections import OrderedDict
 from scipy.misc import imsave
 
 from blocks.extensions import SimpleExtension
-from blocks.graph import ComputationGraph
-from blocks.utils import dict_subset
-
 
 class EpochExtension(SimpleExtension):
     @property
@@ -187,13 +181,11 @@ class FileHandlingExt(EpochExtension):
 
 class SaveExperiment(FileHandlingExt):
     def __init__(self, parameters, save_optimizer=True,
-                 on_best=False, original_save=False, **kwargs) :
+                 original_save=False, **kwargs) :
         super(SaveExperiment, self).__init__(**kwargs)
 
         self.parameters = parameters
         self.save_optimizer = save_optimizer
-        self.on_best = on_best
-        self.best_val = np.inf
 
         self.original_save = original_save if original_save == False else True
         # if original_save is not False, it has to be either a list of epochs to
@@ -247,24 +239,16 @@ class SaveExperiment(FileHandlingExt):
         self.exp_obj.save(optimizer_params, prefix + 'optimizer', 'pkl', network_move=network_move)
 
 
+    def _save_log(self, network_move=False):
+        self.exp_obj.save(
+            getattr(self.main_loop, 'log'), 'main_loop_log', 'pkl', network_move=network_move)
+
+
     def _do(self):
-        do_save = True
-        # if on_best is not False, it should be a string pointing to something
-        # reachable in the main loop like 'valid_missclass'
-        if self.on_best is not False :
-            epoch = self.main_loop.status['_epoch_ends'][-1]
-            value = self.main_loop.log[epoch][self.on_best]
-            if value > self.best_val:
-                do_save = False
-            else:
-                self.best_val = value
-
-        prefix = '' if self.on_best is False else 'best_'
-        if do_save:
-            self._save_parameters(prefix)
-
-        if do_save and self.save_optimizer:
-            self._save_optimizer(prefix)
+        self._save_parameters()
+        if self.save_optimizer:
+            self._save_optimizer()
+        self._save_log()
 
 
     def _do_full_dump(self):
@@ -273,7 +257,7 @@ class SaveExperiment(FileHandlingExt):
         # and with the main_loop infos so everything can be resumed properly
         self._save_parameters(network_move=True)
         self._save_optimizer(network_move=True)
-        self.exp_obj.save(getattr(self.main_loop, 'log'), 'main_loop_log', 'pkl', network_move=True)
+        self._save_log(network_move=True)
 
 
 
@@ -305,23 +289,11 @@ class LoadExperiment(FileHandlingExt):
             return
         if self.full_load :
             # a full load loads: main_loop.status, main_loop.log, parameters.pkl and optimizer.pkl
-            # it will also hack through other extensions to set them straight
             if not self.load_optimizer:
                 print "WARNING: You asked for a full load but load_optimizer is at False"
             print "Loading MainLoop log"
             ml_log = pkl.load(open(self.path+'_main_loop_log.pkl', 'r'))
             setattr(self.main_loop, 'log', ml_log)
-
-            # if saveparameters had 'on_best' it needs to keep track of the good best valid
-            for ext in self.main_loop.extensions:
-                if getattr(ext, 'on_best', False) is not False:
-                    for log in self.main_loop.log.values():
-                        if len(log) == 0 :
-                            # there is a lot of crappy {} in the main loop
-                            continue
-                        val = log[ext.on_best]
-                        if val < ext.best_val:
-                            ext.best_val = val
 
         load_parameters(self.path + '_parameters.pkl', self.parameters)
 
@@ -363,102 +335,35 @@ def load_parameters(path, parameters) :
 
 
 
-class LogAndSaveStuff(FileHandlingExt):
-        # this should be a list of strings of variables names to be saved
-        # so we can follow their evolution over epochs
-        # all the vars that we are trying to save should be numpy arrays!!
-    def __init__(self, arbitrary=[], train=[], valid=[], **kwargs) :
-        self.nan_guard = kwargs.pop('nan_guard', False)
-        super(LogAndSaveStuff, self).__init__(**kwargs)
-
-        def prefix_name(L, prefix):
-            return [prefix + '_' + name for name in L]
-        train = prefix_name(train, 'train')
-        valid = prefix_name(valid, 'valid')
-
-        self.stuff_to_save = arbitrary + train + valid
-        self._suffix = 'monitored'
-
-
-    def _do(self, network_move=False) :
-        # the log wont be done yet
-        # this is actually the iteration, not the epoch
-        epoch = self.main_loop.status['_epoch_ends'][-1]
-
-        if len(self.main_loop.status['_epoch_ends']) == 1 :
-            dictofstuff = OrderedDict()
-
-            for stuff in self.stuff_to_save :
-                dictofstuff.update(
-                    {stuff : self.main_loop.log[epoch][stuff]})
-
-        else :
-            try:
-                path = self.exp_obj.local_path + self.exp_obj.exp_name + '_{}.pkl'.format(self.suffix)
-                f = open(path, 'r')
-            except IOError:
-                path = self.exp_obj.network_path + self.exp_obj.exp_name + '_{}.pkl'.format(self.suffix)
-                f = open(path, 'r')
-            dictofstuff = pkl.load(f)
-            f.close()
-
-            for stuff in self.stuff_to_save :
-                if 'accuracy' in stuff :
-                    if self.nan_guard and np.isnan(self.main_loop.log[epoch][stuff]):
-                        print "ERROR: NAN detected!"
-                        import ipdb ; ipdb.set_trace()
-                oldnumpy_stuff = dictofstuff[stuff]
-                newnumpy_stuff = np.append(oldnumpy_stuff,
-                                           self.main_loop.log[epoch][stuff])
-
-                dictofstuff[stuff] = newnumpy_stuff
-
-        self.exp_obj.save(dictofstuff, self.suffix, 'pkl', network_move=network_move)
-
-
-
-class CheckDemNans(SimpleExtension):
-    def __init__(self, list_to_check, **kwargs):
-        self.list_to_check = list_to_check
-        super(CheckDemNans, self).__init__(**kwargs)
-
-    def do(self, which_callback, *args):
-        for x in self.list_to_check:
-            if np.isnan(x.get_value()).sum() > 0:
-                print "ERROR: NAN detected!"
-                import ipdb ; ipdb.set_trace()
-
-
-
 class Sample(FileHandlingExt):
-    def __init__(self, model, **kwargs) :
-        super(Sample, self).__init__(**kwargs)
-        self.model = model
+    def __init__(self, func, **kwargs) :
         self._suffix = 'samples'
+        super(Sample, self).__init__(**kwargs)
+        self.func = func
 
 
     def _do(self, network_move=False) :
         print "Sampling..."
-        samples = self.model.sampling_function()
+        samples = self.func()
         self.exp_obj.save(samples, self.suffix, self.file_format, append_time=True,
                           network_move=network_move)
 
 
 
 class Reconstruct(FileHandlingExt):
-    def __init__(self, model, datastream, **kwargs) :
+    def __init__(self, func, datastream, **kwargs) :
+        self._suffix = 'reconstructions'
         super(Reconstruct, self).__init__(**kwargs)
-        self.model = model
+        self.func = func
         self.datastream = datastream #fuel object
         self.src_done = False
-        self._suffix = 'reconstructions'
 
 
     def _do(self, network_move=False) :
         print "Reconstructing..."
 
         data = next(self.datastream.get_epoch_iterator())
-        x, reconstructions = self.model.reconstruction_function(*data)
+        x, reconstructions = self.func(data)
         self._do_save(x, reconstructions, network_move)
 
 
@@ -486,8 +391,8 @@ class Reconstruct(FileHandlingExt):
 
 
 class FancyReconstruct(Reconstruct):
-    def __init__(self, model, datastream, nb_class, **kwargs) :
-        super(FancyReconstruct, self).__init__(model, None, **kwargs)
+    def __init__(self, func, datastream, nb_class, **kwargs) :
+        super(FancyReconstruct, self).__init__(func, None, **kwargs)
 
         if not isinstance(datastream, list):
             datastream = [datastream]
@@ -542,18 +447,18 @@ class FancyReconstruct(Reconstruct):
         if hasattr(self, 'extra_data'):
             data = np.concatenate([data, self.extra_data], axis=0)
 
-        x, reconstructions = self.model.reconstruction_function(data)
+        x, reconstructions = self.func(data)
         self._do_save(x[:100], reconstructions[:100], network_move, only_one_src=True)
 
 
 
 class FrameGen(FileHandlingExt):
-    def __init__(self, model, datastream, **kwargs) :
+    def __init__(self, func, datastream, **kwargs) :
         kwargs.setdefault('before_first_epoch', True)
-        super(FrameGen, self).__init__(**kwargs)
-        self.model = model
-        self.datastream = datastream #fuel object
         self._suffix = 'samples'
+        super(FrameGen, self).__init__(**kwargs)
+        self.func = func
+        self.datastream = datastream #fuel object
 
 
     def _do(self, network_move=False):
@@ -569,7 +474,7 @@ class FrameGen(FileHandlingExt):
                 continue
             break
 
-        samples = self.model.sampling_function(batch)
+        samples = self.func(batch)
 
         self.exp_obj.save(samples, self.suffix, 'npz', append_time=True,
                           network_move=network_move)
@@ -591,6 +496,20 @@ class AdjustSharedVariable(EpochExtension):
             shared.set_value(func(self.epoch, current_val))
 
 
+###----------------------###
+### DEBUGGING EXTENSIONS ###
+###----------------------###
+class CheckDemNans(SimpleExtension):
+    def __init__(self, list_to_check, **kwargs):
+        self.list_to_check = list_to_check
+        super(CheckDemNans, self).__init__(**kwargs)
+
+    def do(self, which_callback, *args):
+        for x in self.list_to_check:
+            if np.isnan(x.get_value()).sum() > 0:
+                print "ERROR: NAN detected!"
+                import ipdb ; ipdb.set_trace()
+
 
 class Ipdb(SimpleExtension):
     def __init__(self, *args, **kwargs):
@@ -611,6 +530,81 @@ class Ipdb(SimpleExtension):
             except AttributeError as e:
                 print "{} e was raised, ignoring it".format(e)
         import ipdb; ipdb.set_trace()
+###----------------------###
+
+# Useless extensions kept for legacy code. Now we dump the whole ml log.
+class LogAndSaveStuff(FileHandlingExt):
+        # this should be a list of strings of variables names to be saved
+        # so we can follow their evolution over epochs
+        # all the vars that we are trying to save should be numpy arrays!!
+        # **nan_guard is not implemented anymore
+    def __init__(self, arbitrary=[], train=[], valid=[], nan_guard=False,
+                 log_after_batch_dump_after_epoch=False, **kwargs) :
+        self._suffix = 'monitored'
+        kwargs.setdefault('after_epoch', True)
+        super(LogAndSaveStuff, self).__init__(**kwargs)
+
+        def prefix_name(L, prefix):
+            return [prefix + '_' + name for name in L]
+        train = prefix_name(train, 'train')
+        valid = prefix_name(valid, 'valid')
+
+        self.stuff_to_save = arbitrary + train + valid
+        self.didnt_log_yet = True
+        self.log_after_batch_dump_after_epoch = log_after_batch_dump_after_epoch
+
+    @property
+    def iteration(self):
+        return self.main_loop.status['iterations_done']
+
+
+    def _do(self, network_move=False) :
+        if self.didnt_log_yet:
+            # assuming all iterations are created equal
+            self.iterations_per_epoch = self.iteration
+
+            dictofstuff = OrderedDict()
+            for stuff in self.stuff_to_save :
+                dictofstuff.update(
+                    {stuff : self.fetch_stuff(stuff)})
+            self.didnt_log_yet = False
+
+        else :
+            try:
+                path = self.exp_obj.local_path + self.exp_obj.exp_name + '_{}.pkl'.format(self.suffix)
+                f = open(path, 'r')
+            except IOError:
+                path = self.exp_obj.network_path + self.exp_obj.exp_name + '_{}.pkl'.format(self.suffix)
+                f = open(path, 'r')
+            dictofstuff = pkl.load(f)
+            f.close()
+
+            for stuff in self.stuff_to_save :
+                oldnumpy_stuff = dictofstuff[stuff]
+                newnumpy_stuff = np.append(oldnumpy_stuff,
+                                           self.fetch_stuff(stuff))
+
+                dictofstuff[stuff] = newnumpy_stuff
+
+        self.exp_obj.save(dictofstuff, self.suffix, 'pkl', network_move=network_move)
+
+
+    def fetch_stuff(self, stuff):
+        if not self.log_after_batch_dump_after_epoch:
+            return self.main_loop.log[self.iteration][stuff]
+
+        else:
+            # need to aggregate all that was recored in the
+            # log for that stuff
+            start = (self.epoch - 1) * self.iterations_per_epoch + 1
+            end = self.epoch * self.iterations_per_epoch + 1
+            stuff = [self.main_loop.log[i][stuff] for i in range(start, end, 1) if self.main_loop.log[i].has_key(stuff)]
+            try:
+                rval = np.concatenate(stuff)
+            except ValueError:
+                rval = np.stack(stuff)
+            return rval
+
 
 
 # borrowed from Kyle

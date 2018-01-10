@@ -67,11 +67,18 @@ def flatten(x):
 def make_dict_cls_name_obj(L, cls, popitself=True):
     # the first filter filters things that could not be classes
     # the second checks what we want
-    L = filter(
-        lambda x: issubclass(x, cls),
-        filter(lambda x: type(x) == type(cls), L))
+    L = filter(lambda x: issubclass_(x, cls), L)
     rval = {l.__name__: l for l in L}
 
     if popitself:
         rval.pop(cls.__name__)
     return rval
+
+
+def issubclass_(C, B):
+    """Do not throw an error if C is not a class
+    """
+    try:
+        return issubclass(C, B)
+    except TypeError:
+        return False

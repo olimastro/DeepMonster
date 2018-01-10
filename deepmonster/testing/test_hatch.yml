@@ -1,0 +1,16 @@
+architecture: 
+    path: '/home/host/DeepMonster/deepmonster/testing/test_hatch_cls.py'
+    name: DummyArch
+
+model:
+    path: '/home/host/DeepMonster/deepmonster/testing/test_hatch_cls.py'
+    name: DummyModel
+
+runner:
+    path: '/home/host/DeepMonster/deepmonster/testing/test_hatch_cls.py'
+    name: DummyRunner
+
+config:
+    path: '/home/host/DeepMonster/deepmonster/testing/test_hatch_config.yml'
+    batch_size: 128
+    dummy_key: 'dummy_value'

@@ -1,12 +1,17 @@
 from deepmonster.utils import assert_iterable_return_iterable, make_dict_cls_name_obj
 
+# The logic that follows with Helper and Holder is that Helper should define
+# stateless method that can do things on a _list_. Holder meanwhile subclasses
+# the same methods but act on its own list of linkers and return a new instance
+# of Holder.
+
 class LinksHelper(object):
     """Helper class to interface between Linkers and other scripts.
     """
     @staticmethod
     def filter_linkers(linkers, cls):
         if isinstance(cls, str):
-            linkers_cls_dict = make_dict_cls_name_obj(globals().values(), Link)
+            linkers_cls_dict = make_dict_cls_name_obj(globals().values(), Linker)
             cls = linkers_cls_dict[cls]
         return filter(lambda x: x.__class__ is cls, linkers)
 
@@ -42,7 +47,6 @@ class LinksHolder(LinksHelper):
     def __len__(self):
         return len(self.links)
 
-
     def renew(func):
         """Method decorated with renew simply needs
         to return a list of links and renew will take care to
@@ -53,9 +57,13 @@ class LinksHolder(LinksHelper):
             return LinksHolder(l)
         return _renew
 
-    @renew
     def __add__(self, other):
-        return self.links + other.links
+        if other is LinksHolder:
+            for link in other:
+                self.store_link(link)
+        else:
+            raise TypeError("operand + with LinksHolder only supported with another \
+                            LinksHolder")
 
     @renew
     def filter_linkers(self, cls):
