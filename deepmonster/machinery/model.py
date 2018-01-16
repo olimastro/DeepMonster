@@ -1,7 +1,6 @@
-from . import Configurable
 from deepmonster.utils import assert_iterable_return_iterable, flatten
-from linkers import (LinksHelper, LinksHolder, Linker,
-                     GraphLink, TrackingLink, StreamLink)
+from linkers import (LinkingCore, LinksHelper, Linker,
+                     GraphLink, TrackingLink)
 
 ### MODEL DECORATOR ###
 
@@ -54,7 +53,7 @@ def graph_defining_method(var_names, graph='', auto_add_links=True):
 ###-----------------###
 
 
-class Model(Configurable):
+class Model(LinkingCore):
     """A Model consists of different computation graphs
     stiched together from inputs to outputs.
 
@@ -70,14 +69,10 @@ class Model(Configurable):
     This class is intended to solve these two flexibility
     problems by using Linkers and bookeeping decorators.
     """
-    def __init__(self, architecture, config):
-        super(Model, self).__init__(config)
-        self.architecture = architecture
-        self.linksholder = LinksHolder()
-
+    __core_dependancies__ = ['architecture']
     @property
-    def model_parameters(self):
-        return flatten([arch.params for arch in self.architecture])
+    def parameters(self):
+        return self.combine_holders().filter_linkers('ModelParametersLink')
 
 
     def build_fprop_graph(self):
@@ -107,14 +102,7 @@ class Model(Configurable):
 
 
     def store_links(self, links):
-        links = assert_iterable_return_iterable(links, 'list')
-        for link in links:
-            self.linksholder.store_link(link)
-
-
-    @auto_add_links
-    def add_stream(self, stream, fuel_stream):
-        return StreamLink(fuel_stream, name=stream)
+        self.linksholder.store_links(links)
 
 
     @auto_add_links

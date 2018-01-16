@@ -1,41 +1,32 @@
 #TODO: modify the mainloop so it is no longer bound only to Theano
 from blocks.main_loop import MainLoop
 
-from . import Configurable
 from extensions import ExtensionsFactory
+from linkers import LinkingCore
 
-class ModelRunner(Configurable):
+class ModelRunner(LinkingCore):
     """All a model needs in order to be runned is a dataset.
     Anything else, such as running the script in order to train the
     model or only load its parameters and play around with it, should be done
     through a subclass.
     """
-    def __init__(self, model, config):
-        self.model = model
-        super(ModelRunner, self).__init__(config)
+    __core_dependancies__ = ['model', 'datafetcher']
 
     @property
     def streams(self):
-        sl = self.linksholder.filter_linkers('StreamLink')
+        slh = self.combine_holders().filter_linkers('StreamLink')
         sd = {}
         if len(links) == 1:
-            sd = {'mainloop': sl.links[0].stream}
+            sd = {'mainloop': slh.links[0].stream}
         else:
-            for link in sl:
+            for link in slh:
                 if not sd.has_key('mainloop') and \
                    (link.name == 'mainloop' or link.name == 'train'):
                     sd.update({'mainloop': link.stream})
                 else:
-                    sd.update({link.name: sl.links.stream})
+                    sd.update({link.name: slh.links.stream})
         return sd
 
-    @property
-    def linksholder(self):
-        """Read-only:
-            Any change on the linksholder should be done through Model's
-            method calls.
-        """
-        return model.linksholder
 
     def run(self):
         raise NotImplementedError("This is the base runner class, cannot run anything")
@@ -83,7 +74,7 @@ class TrainModel(ModelRunner):
         the factory.
         """
         ext_linkers, ext_config = ExtensionsFactory.filter_configs_linkers(
-            ext, self.config, self.linksholder.links)
+            ext, self.config, self.combine_holders().links)
         return ExtensionsFactory(ext, ext_config, ext_linkers)
 
 
@@ -105,6 +96,7 @@ class TrainModel(ModelRunner):
 
 
     def run(self):
+        self.build_extensions_list()
         print "Calling MainLoop"
         main_loop = MainLoop(data_stream=self.streams['mainloop'],
                              algorithm=self.model.algorithm,

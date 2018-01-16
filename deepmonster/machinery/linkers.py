@@ -1,4 +1,38 @@
-from deepmonster.utils import assert_iterable_return_iterable, make_dict_cls_name_obj
+import copy
+from deepmonster.utils import (assert_iterable_return_iterable, issubclass_,
+                               make_dict_cls_name_obj)
+from . import Core
+
+"""
+    Along with Core, Links are the fundamental design pieces of deepmonster.
+    While Core define the interface for dictionary configurable objects, Links
+    define an interface for all objects that are passed around throughout the
+    library's execution.
+
+    When a Core, or another piece of deepmonster, wants something of another
+    Core, these actions and requests should be done through the standarized
+    way that Linkers try to achieve. As anything in python, this is not strictly
+    enforced and there are always other ways to hack around. At your own risk :)
+"""
+
+class LinkingCore(Core):
+    """All Core objects used in the library when hatching a monster are of this class.
+    This class provides methods and an interface to manipulate linkers held by the cores.
+    """
+    def __init__(self, *args, **kwargs):
+        self.linksholder = LinksHolder()
+        super(LinkingCore, self).__init__(*args, **kwargs)
+
+    def combine_holders(self, on_cores='all'):
+        """Return requested combination of holders
+        """
+        if on_cores == 'all':
+            on_cores = self.__core_dependancies__
+        cores = [getattr(self, c) for c in self.__core_dependancies__ \
+                 if c in on_cores]
+
+        return sum(map(lambda x: x.linksholder, cores))
+
 
 # The logic that follows with Helper and Holder is that Helper should define
 # stateless method that can do things on a _list_. Holder meanwhile subclasses
@@ -24,6 +58,21 @@ class LinksHelper(object):
                 rval.append(_rval)
         return rval
 
+    @staticmethod
+    def sanity_check(linkers):
+        assert all(issubclass_(l, Linker) for l in linkers), "Non Linker(s) detected"
+        if len(linkers) < 2:
+            return
+        tmpcp = copy.copy(linkers)
+
+        for link in linkers:
+            # do not need to check this link against itself
+            tmpcp.remove(link)
+            for tmpl in tmpcp:
+                if link.__class__ == tmpl.__class:
+                    link.sanity_check(tmpl)
+
+        del tmpcp
 
 
 class LinksHolder(LinksHelper):
@@ -35,8 +84,10 @@ class LinksHolder(LinksHelper):
     values. The variation is that if filter is called, it will return
     a new instance of LinksHolder with these filtered links.
     """
-    def __init__(self, links=[]):
-       self._links = links
+    def __init__(self, links=None):
+        links = [] if links is None else links
+        LinksHelper.sanity_check(links)
+        self._links = links
 
     def __iter__(self):
         def linksholder_iterator():
@@ -57,13 +108,12 @@ class LinksHolder(LinksHelper):
             return LinksHolder(l)
         return _renew
 
+    @renew
     def __add__(self, other):
-        if other is LinksHolder:
-            for link in other:
-                self.store_link(link)
-        else:
+        if other is not LinksHolder:
             raise TypeError("operand + with LinksHolder only supported with another \
                             LinksHolder")
+        return self.links + other.links
 
     @renew
     def filter_linkers(self, cls):
@@ -73,13 +123,15 @@ class LinksHolder(LinksHelper):
     def links(self):
         return self._links
 
-    def store_link(self, newlink):
-        for link in self.links:
-            # can we compare a link with a link of a diff class?
-            if type(link) == type(newlink):
-                link.sanity_check(newlink)
+    def store_links(self, newlinks):
+        newlinks = assert_iterable_return_iterable(newlinks, 'list')
+        for newlink in newlinks:
+            for link in self.links:
+                # can we compare a link with a link of a diff class?
+                if link.__class__ == newlink.__class__:
+                    link.sanity_check(newlink)
 
-        self._links.append(newlink)
+        self._links.extend(newlinks)
 
     def clear_links(self):
         print "WARNING: Links are being cleared, hope this was intended"

@@ -6,10 +6,11 @@ from fuel.transformers import Merge
 
 from transformers import Normalize_01, Normalize_min1_1
 
+DEFAULT_DATASET = ['mnist','cifar10','svhn','celeba']
 
 # NOTE: dataset can be a fuel dataset object, if it is a string it will try to fetch it
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
-                  normalization='default', ssl={}, load_in_memory=False, test=False):
+                  normalization='default', load_in_memory=False, test=False):
     get_dataset = {
         'mnist' : get_mnist,
         'cifar10' : get_cifar10,
@@ -27,7 +28,7 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
     #TODO: more split
     assert len(split) == 1, "NotImplemented more than 1 split"
     if isinstance(dataset, str):
-        assert dataset in ['mnist','cifar10','svhn','celeba'], "Does not recognize name to fetch"
+        assert dataset in DEFAULT_DATASET, "Does not recognize name to fetch"
         dataset = get_dataset[dataset](split, sources, load_in_memory)
 
     if test:
@@ -55,9 +56,6 @@ def create_stream(dataset, batch_size, split=('train',), sources=('features',),
         stream = DataStream(
             dataset=dataset,
             iteration_scheme=scheme)
-
-    if len(ssl) > 0:
-        raise NotImplementedError('didnt implement ssl stream fetcher')
 
     return stream
 

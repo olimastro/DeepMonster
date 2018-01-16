@@ -82,3 +82,8 @@ def issubclass_(C, B):
         return issubclass(C, B)
     except TypeError:
         return False
+
+
+def merge_dicts(d1, d2):
+    d = d1.copy()
+    return d.update(d2)
