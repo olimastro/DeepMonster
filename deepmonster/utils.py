@@ -86,4 +86,5 @@ def issubclass_(C, B):
 
 def merge_dicts(d1, d2):
     d = d1.copy()
-    return d.update(d2)
+    d.update(d2)
+    return d

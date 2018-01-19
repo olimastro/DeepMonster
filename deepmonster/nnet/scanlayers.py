@@ -6,7 +6,6 @@ import theano.tensor as T
 from baselayers import Layer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
-from utils import flatten
 
 
 class ScanLayer(Layer):

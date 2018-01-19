@@ -1,6 +1,6 @@
 import inspect
 import theano.tensor as T
-from utils import flatten
+from deepmonster.utils import flatten
 
 
 class Feedforward(object):
