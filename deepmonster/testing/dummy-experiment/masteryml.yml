@@ -1,0 +1,18 @@
+dataset:
+    name: dummy
+    path: $DMPATH/DeepMonster/deepmonster/testing/dummy-experiment/datafetcher.py
+    batch_size: 128
+
+architecture:
+    name: DummyArch
+    path: $DMPATH/DeepMonster/deepmonster/testing/dummy-experiment/architecture.py
+
+model: $DMPATH/DeepMonster/deepmonster/testing/dummy-experiment/model.py
+
+runner: $DMPATH/DeepMonster/deepmonster/testing/dummy-experiment/runner.py
+
+config:
+    path:
+        - $DMPATH/DeepMonster/deepmonster/testing/dummy-experiment/config.yml
+    print: 'hello'
+    leak: 0.02

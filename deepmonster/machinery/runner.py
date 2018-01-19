@@ -2,7 +2,7 @@
 from blocks.main_loop import MainLoop
 
 from extensions import ExtensionsFactory
-from linkers import LinkingCore
+from core import LinkingCore
 
 class ModelRunner(LinkingCore):
     """All a model needs in order to be runned is a dataset.
@@ -54,9 +54,12 @@ class TrainModel(ModelRunner):
     def configure(self):
         self.extensions = []
         self.specific_extensions = []
-        for ext in self.config['extensions']:
-            if ext.has_key('disabled'):
-                self.excluded_extensions.append(ext)
+        if not self.config.has_key('extensions'):
+            print "INFO: No extensions info in config for runner"
+        else:
+            for ext in self.config['extensions']:
+                if ext.has_key('disabled'):
+                    self.excluded_extensions.append(ext)
 
 
     def add_extension(self, extension):

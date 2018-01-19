@@ -1,5 +1,6 @@
 from deepmonster.utils import assert_iterable_return_iterable, flatten
-from linkers import (LinkingCore, LinksHelper, Linker,
+from core import LinkingCore
+from linkers import (LinksHelper, Linker,
                      GraphLink, TrackingLink)
 
 ### MODEL DECORATOR ###
@@ -21,10 +22,13 @@ def auto_add_links(func, *args, **kwargs):
     return autoaddlinks
 
 
-def graph_defining_method(var_names, graph='', auto_add_links=True):
+def graph_defining_method(var_names, graph='', auto_add_other_links=True):
     """Model decorator around a method defining a graph. By giving
     it a var_names list, it will fetch, as written in the code,
-    the name of the variables and associate them in the GraphLink
+    the name of the variables and associate them in the GraphLink.
+
+    The method it decorates might also define other links,
+    so it will act by default like auto_add_links and add them.
 
     ***It needs locals() to be the returned value!
     """
@@ -37,15 +41,14 @@ def graph_defining_method(var_names, graph='', auto_add_links=True):
             # first pick up the model variables for the graphlink
             var_name_dict = {v_val: v_name for (v_name, v_val) in \
                              rval.iteritems() if v_name in var_names}
-            graphlink = GraphLink(graph, var_name_dict)
+            links_to_store = [GraphLink(graph, var_name_dict)]
 
-            # second, this method might also defined other links,
-            # act be default like auto_add_links
-            otherlinks = LinksHelper.filter_linkers(rval.values(), Linker)
-            otherlinks.append(graphlink)
+            if auto_add_other_links:
+                otherlinks = LinksHelper.filter_linkers(rval.values(), Linker)
+                links_to_store.extend(otherlinks)
 
             model = args[0]
-            model.store_links(otherlinks)
+            model.store_links(links_to_store)
 
         return link_up_outputs
     return real_decorator
@@ -164,6 +167,7 @@ class Model(LinkingCore):
         return tuple(varz)
 
 
+    # sadly def func(self, *args, graph=None) is a syntax error
     def fetch_and_assign_by_exec(self, *args, **kwargs):
         """Method to almost do the ultimate lazy usage we hope to achieve.
         Writing x, y, z = self.fetch_vars(['x','y','z']) is tedious, why do

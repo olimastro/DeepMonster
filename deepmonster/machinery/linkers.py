@@ -1,8 +1,6 @@
 import copy
 from deepmonster.utils import (assert_iterable_return_iterable, issubclass_,
                                make_dict_cls_name_obj)
-from . import Core
-
 """
     Along with Core, Links are the fundamental design pieces of deepmonster.
     While Core define the interface for dictionary configurable objects, Links
@@ -14,25 +12,6 @@ from . import Core
     way that Linkers try to achieve. As anything in python, this is not strictly
     enforced and there are always other ways to hack around. At your own risk :)
 """
-
-class LinkingCore(Core):
-    """All Core objects used in the library when hatching a monster are of this class.
-    This class provides methods and an interface to manipulate linkers held by the cores.
-    """
-    def __init__(self, *args, **kwargs):
-        self.linksholder = LinksHolder()
-        super(LinkingCore, self).__init__(*args, **kwargs)
-
-    def combine_holders(self, on_cores='all'):
-        """Return requested combination of holders
-        """
-        if on_cores == 'all':
-            on_cores = self.__core_dependancies__
-        cores = [getattr(self, c) for c in self.__core_dependancies__ \
-                 if c in on_cores]
-
-        return sum(map(lambda x: x.linksholder, cores))
-
 
 # The logic that follows with Helper and Holder is that Helper should define
 # stateless method that can do things on a _list_. Holder meanwhile subclasses

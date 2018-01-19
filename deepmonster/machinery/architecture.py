@@ -1,5 +1,6 @@
-from . import onlynewkeysdict
-from linkers import LinkingCore, ModelParametersLink
+from dicttypes import onlynewkeysdict
+from core import LinkingCore
+from linkers import ModelParametersLink
 from deepmonster.nnet.network import Feedforward
 from deepmonster.utils import flatten
 
@@ -8,6 +9,9 @@ class Architecture(LinkingCore):
     build_arch should be overriden by the user to implement the user's arch.
     You can modify directly the _internal dict but Architecture provides
     add_layers_to_arch and add_to_arch methods to help the process.
+
+    Provides all the same getters as a regular dict, but setters are more
+    restricted.
     """
     def configure(self):
         self._internal = {}
@@ -25,14 +29,20 @@ class Architecture(LinkingCore):
     def keys(self):
         return self._internal.keys()
 
+    def has_key(self, key):
+        return self._internal.has_key(key)
+
     @property
     def parameters(self):
-        params = [x.parameters for x in self._internal.values()]
+        params = [x.parameters for x in self._internal.values() if \
+                  hasattr(x, 'parameters')]
         return flatten(params)
 
     def add_layers_to_arch(self, layers, prefix, ff_kwargs):
         """Helper method to easily build Feedforward object and add
-        it in the internal dict
+        it in the internal dict.
+
+        Wrap any kwargs to give to Feedforward in ff_kwargs dict.
         """
         ff = Feedforward(layers, prefix, **ff_kwargs)
         self._internal.update({prefix: ff})

@@ -1,1 +1,1 @@
-from hatch import hatch, parse_config
+from machinery.hatch import hatch, parse_config

@@ -47,6 +47,7 @@ class ExtensionsFactory(object):
         """Help filtering the config dict and the linkers list for
         only what is usefull for this extension
         """
+        #FIXME: there could be no ext field!!!!!
         config = config[ext]
         try:
             helper_cls = ExtFactoryHelper.find_helper_class(ext)

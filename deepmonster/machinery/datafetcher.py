@@ -1,5 +1,6 @@
-from linkers import LinkingCore, StreamLink
-from deepmonster.fuel import create_stream, DEFAULT_DATASET
+from core import LinkingCore
+from linkers import StreamLink
+from deepmonster.fuel.streams import create_stream, DEFAULT_DATASET
 from deepmonster.utils import assert_iterable_return_iterable
 
 class DataFetcher(LinkingCore):
@@ -125,7 +126,7 @@ class DefaultFetcher(DataFetcher):
     __default_splits__ = ['train', 'valid']
 
 
-class DeepmonsterFetcher(DefaultFetcher):
+class DeepMonsterFetcher(DefaultFetcher):
     """Default library fetcher uses the logic written in deepmonster.fuel
     """
     __knows_how_to_load__ = DEFAULT_DATASET
