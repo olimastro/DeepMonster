@@ -13,9 +13,7 @@ EXTENSIONS = make_dict_cls_name_obj(locals().values(), SimpleExtension)
 EXTENSIONS_BASE = list(SimpleExtension.BOOLEAN_TRIGGERS) + \
         list(SimpleExtension.INTEGER_TRIGGERS)
 
-# Aside from the linkers which are specific to extensions,
-# this could be any Factory for any object that get initialized with
-# a config file.
+
 class ExtensionsFactory(object):
     """This class initializes an extension with its:
         ext: string name
@@ -47,8 +45,11 @@ class ExtensionsFactory(object):
         """Help filtering the config dict and the linkers list for
         only what is usefull for this extension
         """
-        #FIXME: there could be no ext field!!!!!
-        config = config[ext]
+        try:
+            config = config[ext]
+        except KeyError:
+            # no config values for this extension
+            config = {}
         try:
             helper_cls = ExtFactoryHelper.find_helper_class(ext)
             linkers = filter(lambda x: x.__class__ in helper_cls.linkers,

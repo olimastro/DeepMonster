@@ -1,5 +1,9 @@
 import re
 
+def logical_xor(a, b):
+    return (a and not b) or (not a and b)
+
+
 def assert_iterable_return_iterable(x, iter_type='tup'):
     """Make sure that x is the iterable of said type
     Watch out for the differences among the three,

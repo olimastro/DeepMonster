@@ -1,5 +1,6 @@
-from dicttypes import frozendict, prioritydict
-from linkers import LinksHolder
+from dicttypes import dictify_type, frozendict, merge_dict_as_type
+from linkers import LinksHolder, LinksHelper
+from deepmonster.utils import assert_iterable_return_iterable
 
 class configdict(frozendict):
     """The config dictionary carried around by Core objects should be frozen, so we
@@ -20,7 +21,7 @@ class Core(object):
     The only __init__ value for them is a dict config.
     ***ONLY modify __init__ with care when you know what you are doing***
 
-    Therefore, Core objects can fetch wanted values through self.config.
+    This way, Core objects can fetch wanted values through self.config.
     To emulate what user custom __init__ would do, a method configure() is
     called at the end and can be implemented for further customization.
 
@@ -28,9 +29,13 @@ class Core(object):
     with the 'bind_a_core' method. These dependancies need to be specified in
     __core_dependancies__.
 
-    Because all Core objects will most likely share the same config dict (since
-    they are global values setting the global behaviors of the experiment
-    by the user), config is frozen and cannot be changed after its parsing.
+    The config dict is of type frozendict so it cannot be easily changed. This is
+    a design choice to try enforcing a bit of reproductibility. The user
+    should know what happened in a DM run by inspection of the .yml files and
+    hence the config. If objects start to modify freely these values and wildly
+    change their behaviors accordingly, then inspection becomes useless. Core still
+    provides a method to write on its own local config dict (it will not propagate
+    to other Core's config).
     """
     __core_dependancies__ = []
 
@@ -42,7 +47,7 @@ class Core(object):
                 " be of type dict."
         for k,v in kwargs.iteritems():
             self.bind_a_core(k, v)
-        self.config = configdict(config)
+        self.config = dictify_type(config, configdict)
         self.configure()
 
 
@@ -58,7 +63,27 @@ class Core(object):
         pass
 
 
-    def merge_config_with_priority_args(dict_of_args, config_subset=None):
+    def write_on_config(self, newitem, from_key=None):
+        """See above why this method exists compared on writing directly on self.config
+
+        from_key specifies the root key on which to update since the config
+        is a dict of dicts / non dicts. It can be a list.
+        If unspecified, we write from the base of the dict.
+        """
+        config = dictify_type(self.config, dict) # unfreeze the config
+        if from_key is not None:
+            D = config
+            from_key = assert_iterable_return_iterable(from_key, 'list')
+            for k in from_key:
+                D = D[k]
+            D.update(newitem)
+        else:
+            config.update(newitem)
+
+        self.config = dictify_type(config, configdict)
+
+
+    def merge_config_with_priority_args(self, dict_of_args, config_subset=None):
         """In various occasions, objects could have available for themselves
         other dictionaries of config values than the global ones assigned to
         them in self.config.
@@ -72,7 +97,7 @@ class Core(object):
         new_dict = prioritydict(dict_of_args)
         subset = {k: v for k,v in self.config.iteritems() if k in config_subset} \
                 if config_subset is None else self.config
-        return new_dict.update(subset)
+        return merge_dict_as_type(dict_of_args, subset, keep_source_type=False)
 
 
 
@@ -92,4 +117,5 @@ class LinkingCore(Core):
         cores = [getattr(self, c) for c in self.__core_dependancies__ \
                  if c in on_cores]
 
-        return sum(map(lambda x: x.linksholder, cores))
+        holders = [x.linksholder for x in cores if hasattr(x, 'linksholder')]
+        return LinksHelper.merge_holders(holders)

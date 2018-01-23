@@ -1,6 +1,7 @@
 import imp, yaml, os, sys
 from inspect import isclass
 from abc import ABCMeta, abstractmethod, abstractproperty
+
 from deepmonster.utils import issubclass_, assert_iterable_return_iterable
 from core import Core
 
@@ -130,7 +131,6 @@ class YmlParser(object):
 
     def __init__(self, key):
         self.key = key
-        self.particular_extra_config = {}
         self.format = None
 
     @abstractmethod
@@ -321,7 +321,6 @@ class DefaultNamedFormat(FilePathFormat):
     def load_with_this_format(self, x):
         if self._format_type == 1:
             return None
-        self.particular_extra_config = x
         return super(DefaultNamedFormat, self).load_with_this_format(x['path'])
 
 

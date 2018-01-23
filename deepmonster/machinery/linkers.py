@@ -50,8 +50,14 @@ class LinksHelper(object):
             for tmpl in tmpcp:
                 if link.__class__ == tmpl.__class:
                     link.sanity_check(tmpl)
-
         del tmpcp
+
+    @staticmethod
+    def merge_holders(holders):
+        rval = LinksHolder()
+        for holder in holders:
+            rval += holder
+        return rval
 
 
 class LinksHolder(LinksHelper):
@@ -64,7 +70,8 @@ class LinksHolder(LinksHelper):
     a new instance of LinksHolder with these filtered links.
     """
     def __init__(self, links=None):
-        links = [] if links is None else links
+        links = [] if links is None else \
+                assert_iterable_return_iterable(links, 'list')
         LinksHelper.sanity_check(links)
         self._links = links
 
@@ -90,8 +97,7 @@ class LinksHolder(LinksHelper):
     @renew
     def __add__(self, other):
         if other is not LinksHolder:
-            raise TypeError("operand + with LinksHolder only supported with another \
-                            LinksHolder")
+            raise TypeError("operand + with LinksHolder only supported with another LinksHolder")
         return self.links + other.links
 
     @renew
@@ -104,6 +110,10 @@ class LinksHolder(LinksHelper):
 
     def store_links(self, newlinks):
         newlinks = assert_iterable_return_iterable(newlinks, 'list')
+        # execute checks for all new links among themselves
+        LinksHelper.sanity_check(newlinks)
+
+        # execute checks for all new links compared to existing ones
         for newlink in newlinks:
             for link in self.links:
                 # can we compare a link with a link of a diff class?
@@ -241,6 +251,13 @@ class UniquelyNamedLink(ExtensionLink):
 
     def sanity_check(self, otherlink):
         if self.name == otherlink.name:
+            if self.name == '':
+                raise RuntimeError(
+                    "Trying to create two links of type {} without giving them names. ".format(
+                        self.__class__)+\
+                    "These types of links are also UniquelyNamedLink and only one link of this "+\
+                    "type is tolerated without a name. With more than one unanmed, they "+\
+                    "become undstinguishiable and the run might become unstable.")
             raise ValueError(
                 "Collision found for same name {} in ExtensionLinkers".format(self.name))
 

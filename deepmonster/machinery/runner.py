@@ -14,18 +14,21 @@ class ModelRunner(LinkingCore):
 
     @property
     def streams(self):
-        slh = self.combine_holders().filter_linkers('StreamLink')
-        sd = {}
-        if len(links) == 1:
-            sd = {'mainloop': slh.links[0].stream}
-        else:
-            for link in slh:
-                if not sd.has_key('mainloop') and \
-                   (link.name == 'mainloop' or link.name == 'train'):
-                    sd.update({'mainloop': link.stream})
-                else:
-                    sd.update({link.name: slh.links.stream})
-        return sd
+        if not hasattr(self, '_streams'):
+            slh = self.combine_holders().filter_linkers('StreamLink')
+            sd = {}
+            if len(links) == 1:
+                sd = {'mainloop': slh.links[0].stream}
+            else:
+                for link in slh:
+                    if not sd.has_key('mainloop') and \
+                       (link.name == 'mainloop' or link.name == 'train'):
+                        sd.update({'mainloop': link.stream})
+                    else:
+                        sd.update({link.name: slh.links.stream})
+            self._streams = sd
+            return sd
+        return self._streams
 
 
     def run(self):
@@ -34,6 +37,8 @@ class ModelRunner(LinkingCore):
 
 
 class TrainModel(ModelRunner):
+    __core_dependancies__ = ['model', 'datafetcher', 'filemanager']
+
     # The order in the mainloop IS important
     # user defined exp will typically go in the middle
     # of these two blocks
@@ -54,8 +59,10 @@ class TrainModel(ModelRunner):
     def configure(self):
         self.extensions = []
         self.specific_extensions = []
+        self.excluded_extensions = []
         if not self.config.has_key('extensions'):
             print "INFO: No extensions info in config for runner"
+            self.write_on_config({'extensions': {}})
         else:
             for ext in self.config['extensions']:
                 if ext.has_key('disabled'):
@@ -78,6 +85,7 @@ class TrainModel(ModelRunner):
         """
         ext_linkers, ext_config = ExtensionsFactory.filter_configs_linkers(
             ext, self.config, self.combine_holders().links)
+        import ipdb; ipdb.set_trace()
         return ExtensionsFactory(ext, ext_config, ext_linkers)
 
 
@@ -89,13 +97,19 @@ class TrainModel(ModelRunner):
                 extensions_obj.append(self.get_extension(ext))
             return extensions_obj
 
-        self.extensions.extend(build_list(default_extensions_before))
+        assert not self.config['extensions'].has_key('experiment')
+        exp_keys = ('exp_name', 'local_path', 'network_path', 'full_dump')
+        exp_dict = {
+            'experiment': dict(zip(exp_keys, map(lambda x: getattr(self.filemanager, x), exp_keys)))}
+        self.write_on_config(exp_dict, from_key='extensions')
+
+        self.extensions.extend(build_list(self.default_extensions_before))
         self.extensions.extend(self.specific_extensions)
-        self.extensions.extend(build_list(default_extensions_after))
+        self.extensions.extend(build_list(self.default_extensions_after))
 
 
     def add_stream(self, stream, fuel_stream):
-        self.model.add_stream(stream, fuel_stream)
+        self._streams.update({stream: fuel_stream})
 
 
     def run(self):

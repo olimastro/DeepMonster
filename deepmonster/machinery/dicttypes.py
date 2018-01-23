@@ -38,3 +38,29 @@ class onlynewkeysdict(dict):
     def __setitem__(self, k, v):
         self.error_on_existing_key([k])
         super(onlynewkeysdict, self).__setitem__(k, v)
+
+
+def dictify_type(d, dtype):
+    """Propagate dtype to all dicts (on all levels) of d
+    """
+    # casting seems to make new objects and we lose the references in dicts of dicts
+    d = dict(d) # to prevent errors from update we need to recast as dict
+    for k,v in d.iteritems():
+        if issubclass(v.__class__, dict):
+            v = dictify_type(v, dtype)
+            d[k] = v
+
+    return dtype(d)
+
+
+def merge_dict_as_type(d_source, d_tomerge, mergetype=prioritydict, keep_source_type=True):
+    """Return a new dict that is d_source updated with an update policy as specified
+    in mergetype with d_tomerge. By default, it uses a prioritydict.
+    If keep_source_type returns a dict of the same type as input else returns
+    a dict of mergetype
+    """
+    new_dict = mergetype(d_source)
+    new_dict.update(d_tomerge)
+    if keep_source_type:
+        return type(d_source)(new_dict)
+    return new_dict

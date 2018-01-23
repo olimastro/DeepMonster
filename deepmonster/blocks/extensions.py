@@ -13,9 +13,10 @@ class EpochExtension(SimpleExtension):
         return self.main_loop.status['epochs_done']
 
 
-class Experiment(EpochExtension):
+class LegacyExperiment(EpochExtension):
     """
-        This class is intended to do all the savings and bookeeping required
+    Old way of bookeeping. Use Experiment for new way with deepmonster.machinery
+    This class is intended to do all the savings and bookeeping required
     """
     def __init__(self, name, local_path=None, network_path=None, extra_infos='',
                  crush_old=False, full_dump=False, **kwargs):
@@ -24,7 +25,7 @@ class Experiment(EpochExtension):
         exp_group = os.environ['EXPFILES_GROUP'] if os.environ.has_key('EXPFILES_GROUP') else ''
         local_path = os.path.join(local_path, exp_group)
         kwargs.setdefault('before_training', True)
-        super(Experiment, self).__init__(**kwargs)
+        super(LegacyExperiment, self).__init__(**kwargs)
 
         # global full_dump param for all ext if not individually set
         self.full_dump = -1 if full_dump is False else full_dump
@@ -122,6 +123,25 @@ class Experiment(EpochExtension):
                 t += 1
                 time.sleep(t)
             raise err
+
+
+class Experiment(LegacyExperiment):
+    """This extension in effect does nothing more than being a data structure
+    for the other extensions and provide the save method from LegacyExperiment
+
+    The new way of doing all the file structuring is in deepmonster.machinery.filemanager
+    """
+    def __init__(self, exp_name, local_path, network_path, full_dump, **kwargs):
+        self.exp_name = exp_name
+        self.local_path = local_path
+        self.network_path = self.network_path
+        self.full_dump = self.full_dump
+        # bypass LegacyExperiment init
+        super(EpochExtension, self).__init__(**kwargs)
+
+    def do(self, *args):
+        # do nothing
+        pass
 
 
 
