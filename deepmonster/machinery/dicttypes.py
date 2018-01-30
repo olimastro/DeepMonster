@@ -53,9 +53,14 @@ def dictify_type(d, dtype):
     return dtype(d)
 
 
-def merge_dict_as_type(d_source, d_tomerge, mergetype=prioritydict, keep_source_type=True):
+# DEFAULT library execution when merging dictionaries through these func
+MERGETYPE = prioritydict
+
+
+def merge_dict_as_type(d_source, d_tomerge, mergetype=MERGETYPE, keep_source_type=True):
     """Return a new dict that is d_source updated with an update policy as specified
     in mergetype with d_tomerge. By default, it uses a prioritydict.
+
     If keep_source_type returns a dict of the same type as input else returns
     a dict of mergetype
     """
@@ -64,3 +69,13 @@ def merge_dict_as_type(d_source, d_tomerge, mergetype=prioritydict, keep_source_
     if keep_source_type:
         return type(d_source)(new_dict)
     return new_dict
+
+
+def merge_all_dicts_with_dict(dict_of_dicts, dict_to_merge, mergetype=MERGETYPE):
+    """Merge all dicts in dict of dicts with dict_to_merge with a merging behavior
+    according to MERGETYPE
+    """
+    for k, v in dict_of_dicts.iteritems():
+        dict_of_dicts[k] = merge_dict_as_type(v, dict_to_merge, mergetype)
+
+    return dict_of_dicts

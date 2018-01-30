@@ -15,9 +15,9 @@ class FileManager(Core):
         exp_name = self.config['exp_name']
 
         self.exp_name = exp_name
-        self.local_path = os.path.join(local_path, exp_name) + '/'
+        self.local_path = os.path.join(local_path, exp_name)
         self.network_path = network_path if network_path is None else \
-                os.path.join(network_path, exp_name) + '/'
+                os.path.join(network_path, exp_name)
 
         crush_old = self.config.get('crush_old', False)
         # global full_dump param for all ext if not individually set
@@ -47,7 +47,7 @@ class FileManager(Core):
             self.manage_files(self.network_path, ['network', 'all'])
 
         if self.network_path is not None:
-            with open(self.network_path + '{}.txt'.format(self.exp_name), 'w') as f:
+            with open(os.path.join(self.network_path, '{}.txt'.format(self.exp_name)), 'w') as f:
                 lt = time.localtime()
                 timefootprint = str(lt.tm_year) + str(lt.tm_mon) + str(lt.tm_mday) + \
                         str(lt.tm_hour) + str(lt.tm_min)
@@ -60,11 +60,9 @@ class FileManager(Core):
 
 
     def manage_files(self, path, crush_old_cond):
-        try:
+        if not os.path.exists(path):
             os.makedirs(path)
-        except OSError:
-            pass
-        if len(os.listdir(path)) > 0:
+        elif len(os.listdir(path)) > 0:
             print "Files already in", path
             if self.crush_old in crush_old_cond:
                 print "WARNING: Will remove them in 5s (crush_old={})".format(self.crush_old)

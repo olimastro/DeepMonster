@@ -1,3 +1,4 @@
+from inspect import isclass
 import re
 
 def logical_xor(a, b):
@@ -82,10 +83,9 @@ def make_dict_cls_name_obj(L, cls, popitself=True):
 def issubclass_(C, B):
     """Do not throw an error if C is not a class
     """
-    try:
-        return issubclass(C, B)
-    except TypeError:
-        return False
+    if not isclass(C):
+        C = C.__class__
+    return issubclass(C, B)
 
 
 def merge_dicts(d1, d2):

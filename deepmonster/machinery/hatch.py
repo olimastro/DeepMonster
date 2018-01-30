@@ -18,12 +18,11 @@
     and this script only parse them?
 """
 from datafetcher import DeepMonsterFetcher
-from dicttypes import onlynewkeysdict, merge_dict_as_type
+from dicttypes import onlynewkeysdict, merge_all_dicts_with_dict
+from filemanager import FileManager
 from runner import TrainModel
-from yml import (YmlLoader, YmlFieldNotFoundError, StandardFormat,
-                 RecursivelyDefinedFormat, DefaultNamedFormat)
-from deepmonster.utils import (merge_dicts, assert_iterable_return_iterable,
-                               logical_xor)
+from yml import YmlParser, YmlFieldNotFoundError, unpack_yml
+from deepmonster.utils import assert_iterable_return_iterable, logical_xor
 
 # the scripts here are made to be more tight in their error checking
 # we want the program to crash when the core is being setup if it finds
@@ -37,40 +36,8 @@ def hatch(path_to_yml, AssembleClass=None):
 
     Format of the masteryml:
         -----------------------------------------------
-        model*: path/to/model.py
-        architecture*: path/to/architecture.py
-        config**: path/to/config.yml
-
-        (OPTIONAL)
-        runner*: path/to/runner.py
-        (Will source TrainModel as a runner by default)
-
-        dataset:
-            name: name_of_dataset
-            (optional)
-            path: path/to/datafetcher.py
-            option1: value1
-            ...
-        (Will source EmptyDataFetcher by default if not given)
-        (If path to a fetcher is not given, it will source based on 'name'
-         a default dataset defined in deepmonster.fuel.streams)
+        TODO: write this
         -----------------------------------------------
-
-        *2nd accepted format:
-            path: path/to/architecture.py
-            name: name_of_class_to_import
-
-        (EVERY config.yml have to abide by these two possible formats)
-        **2nd accepted format:
-            path:
-                - path/to/config1.yml
-                  path/to/config2.yml
-                  ...
-            option1: value1
-            option2: value2
-            ...
-
-         ***2nd accepted format:
 
     hatch requires two things two run: config values and an assemble object.
     The assemble object can be the library's default. This one also defines
@@ -82,10 +49,10 @@ def hatch(path_to_yml, AssembleClass=None):
     """
     assemble = Assemble() if AssembleClass is None else AssembleClass()
 
-    loader = YmlLoader(path_to_yml, assemble.cores_mandatory_to_init + ['config'])
+    loader = YmlParser(path_to_yml, assemble.cores_mandatory_to_init + ['config'])
     loader.load()
 
-    core_instances = assemble.assemble_cores(ymlloader=loader)
+    core_instances = assemble.assemble_cores(ymlparser=loader)
 
     # hatch the monster!
     core_instances[assemble.runnable].run()
@@ -111,12 +78,6 @@ class Assemble(object):
         self.cores_with_default = [x for x,v in self.core_pieces_init_dict.iteritems() if v is not None]
         self.cores_mandatory_to_init = list(set(self.core_pieces) - set(self.cores_with_default))
 
-    def get_core_config_mapping(self, corekey):
-        """As a design choice, there could be fields in the config
-        which are not the correct names in the library for their
-        corresponding core.
-        """
-        return self.core_config_mapping.get(corekey, corekey)
 
     @property
     def core_to_format_dict(self):
@@ -126,7 +87,7 @@ class Assemble(object):
             self.set_core_to_format_dict()
             return self._ctfd
 
-    def assemble_cores(self, ymlloader=None, config=None, bypass_format=False,
+    def assemble_cores(self, ymlparser=None, config=None, bypass_format=False,
                        masterdict=None):
         """Assemble all cores for this run of the library. A typical run will be done
         through hatch, but some kwargs can be given for this to be used outside
@@ -135,49 +96,47 @@ class Assemble(object):
 
         Returns a dictionary of {core_name: core_instance}
         """
-        assert logical_xor(ymlloader is not None, bypass_format), \
-                "ymlloader is not None XOR bypass_format is True needs to be True"
-        if ymlloader is not None and masterdict is not None:
-            print "WARNING, Assemble was not given a ymlloader and a masterdict, "+\
+        assert logical_xor(ymlparser is not None, bypass_format), \
+                "ymlparser is not None XOR bypass_format is True needs to be True"
+        if ymlparser is not None and masterdict is not None:
+            print "WARNING, Assemble was not given a ymlparser and a masterdict, "+\
                     "the masterdict will be ignored."
 
         # load config
         if config is None:
-            if ymlloader is not None:
-                config = parse_config(ymlloader.yml['config'])
+            if ymlparser is not None:
+                config = unpack_yml(ymlparser.yml['config'])
             else:
-                config = parse_config(masterdict['config'])
+                config = unpack_yml(masterdict['config'])
+
+        core_configs = {s: None for s in self.core_pieces}
 
         if not bypass_format:
             core_classes = {s: None for s in self.core_pieces}
 
             # load mandatory classes
             for req_core in self.cores_mandatory_to_init:
-                format_parser = self.core_to_format_dict[req_core]
-                core_classes[req_core] = ymlloader.load_ymlentry(req_core, format_parser)
+                core_config, cls = ymlparser.load_ymlentry(req_core)
+                core_configs[req_core] = core_config
+                core_classes[req_core] = cls
 
             # load optional Cores
-            # options have 4 behaviors from the loader:
+            # options have 4 behaviors from the parser:
                 # they return a User defined Class
-                # they raise YmlFieldNotFoundError, in case we need to default
-                # they return None, in case the format was good AND we need to default
+                # they raise YmlFieldNotFoundError, in case we need to default and have 0 extra config
+                # they return a cls None and a config, in case we need to default the cls
                 # they raise FormatError, in case an error was encountered while parsing
             for opt_core in self.cores_with_default:
-                format_parser = self.core_to_format_dict[opt_core]
                 try:
-                    rval = ymlloader.load_ymlentry(opt_core, format_parser)
+                    core_config, cls = ymlparser.load_ymlentry(opt_core)
                 except YmlFieldNotFoundError:
-                    rval = None
-                if rval is None:
-                    rval = self.core_pieces_init_dict[opt_core]
+                    core_config = {}
+                    cls = None
+                if cls is None:
+                    cls = self.core_pieces_init_dict[opt_core]
 
-                core_classes[opt_core] = rval
-
-            # this results in a config dict for every core objects where
-            # fields defined under their core name are taken as priority
-            # over the global ones in config.
-            core_configs = {
-                s: merge_dict_as_type(config, ymlload.yml.get(s, {})) for s in self.core_pieces}
+                core_configs[opt_core] = core_config
+                core_classes[opt_core] = cls
 
         else:
             assert all(v is not None for v in self.core_pieces_init_dict.values()),\
@@ -185,10 +144,15 @@ class Assemble(object):
                     "pieces dictionary is None, it cannot know what classes to use."
             core_classes = self.core_pieces_init_dict
             if masterdict is None:
-                core_configs = {s: config for s in self.core_pieces}
+                core_configs = {s: {} for s in self.core_pieces}
             else:
-                core_configs = {
-                    s: merge_dict_as_type(config, masterdict.get(s, {})) for s in self.core_pieces}
+                core_configs = {s: masterdict.get(s, {}) for s in self.core_pieces}
+
+        # prepare config for all cores
+        # this results in a config dict for every core objects where
+        # fields defined under their core name are taken as priority
+        # over the global ones in config.
+        core_configs = merge_all_dicts_with_dict(core_configs, config)
 
         # init classes
         core_instances = {s: None for s in self.core_pieces}
@@ -197,8 +161,7 @@ class Assemble(object):
 
         for instance in core_instances.values():
             for cd in instance.__core_dependancies__:
-                ci_key = self.get_core_config_mapping(cd)
-                instance.bind_a_core(cd, core_instances[ci_key])
+                instance.bind_a_core(cd, core_instances[cd])
 
         return core_instances
 
@@ -214,11 +177,14 @@ class Assemble(object):
             'architecture': None,
             'model': None,
             'runner': TrainModel,
-            'dataset': DeepMonsterFetcher,
+            'datafetcher': DeepMonsterFetcher,
+            'filemanager': FileManager,
         }
         return cpid
 
+    #NOTE: NotImplemented any more, it is here for future use
     def set_core_to_format_dict(self):
+        raise NotImplementedError("This feature is currently unsupported")
         """Mapping from core classes to the YmlParsing format they can
         ingest and understand to be loaded and setup without causing errors
         """
@@ -231,11 +197,6 @@ class Assemble(object):
         }
         self._ctfd = ctfd
 
-    @property
-    def core_config_mapping(self):
-        """Dict from a core name to a config name
-        """
-        return {'datafetcher': 'dataset'}
 
     @property
     def runnable(self):
@@ -253,6 +214,7 @@ def parse_config(configyml):
 
     Returns a merge of all the config files as the final configuration dictionnary.
     """
+    return unpack_yml(configyml, 'path')
     format_parser = RecursivelyDefinedFormat('config', '.yml')
     def update_dict(yml, D):
         _yml = yml.copy()

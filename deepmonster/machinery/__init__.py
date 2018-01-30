@@ -1,5 +1,6 @@
 from architecture import Architecture
-from model import Model
 from datafetcher import DataFetcher, DefaultFetcher
-from runner import ModelRunner, TrainModel
+from hatch import Assemble
 from linkers import LinksHolder, LinksHelper
+from model import Model
+from runner import ModelRunner, TrainModel

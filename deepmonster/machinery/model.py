@@ -21,6 +21,16 @@ def auto_add_links(func, *args, **kwargs):
 
     return autoaddlinks
 
+gdm_decorator_errmsg = """\
+This check can have different behaviors according to policy_on_none. \
+This policy can take: \
+'none' will disabled this check, 'silence_fix' removes the None variables \
+without causing an alert, 'warn_fix' causes an alert, 'raise' throws a RuntimeError."""
+
+#TODO: convert this as DM lib config
+policy_on_none='warn_fix'
+assert policy_on_none in ['none','slience_fix','warn_fix','raise'], \
+        "Does not recognize value of policy_on_none"
 
 def graph_defining_method(var_names, graph='', auto_add_other_links=True):
     """Model decorator around a method defining a graph. By giving
@@ -39,12 +49,29 @@ def graph_defining_method(var_names, graph='', auto_add_other_links=True):
                     "decorator! (Actually, any dict will silence this error)"
 
             # first pick up the model variables for the graphlink
-            var_name_dict = {v_val: v_name for (v_name, v_val) in \
+            var_name_dict = {v_name: v_val for (v_name, v_val) in \
                              rval.iteritems() if v_name in var_names}
+
+            # check for Nonez
+            if policy_on_none == 'raise':
+                if any(x is None for x in var_name_dict.values()):
+                    raise RuntimeError(
+                        "Some variables that were asked to be automatically linked "+\
+                        "are None. " + gdm_decorator_errmsg)
+            elif policy_on_none != 'none':
+                len_vnd = len(var_name_dict)
+                var_name_dict = {k: v for k,v in var_name_dict.iteritems() \
+                                 if v is not None}
+                if policy_on_none == 'warn_fix' and len_vnd != len(var_name_dict):
+                    print "WARNING: "+\
+                        "Some variables that were asked to be automatically linked "+\
+                        "are None. Removing them from the graph. " + gdm_decorator_errmsg
+
+            # store
             links_to_store = [GraphLink(graph, var_name_dict)]
 
             if auto_add_other_links:
-                otherlinks = LinksHelper.filter_linkers(rval.values(), Linker)
+                otherlinks = LinksHelper.filter_linkers(rval.values(), Linker, filter_as_subclass=True)
                 links_to_store.extend(otherlinks)
 
             model = args[0]
@@ -75,7 +102,9 @@ class Model(LinkingCore):
     __core_dependancies__ = ['architecture']
     @property
     def parameters(self):
-        return self.combine_holders().filter_linkers('ModelParametersLink')
+        linkers = self.combine_holders().filter_linkers('ModelParametersLink').links
+        params = [l.parameters for l in linkers]
+        return flatten(params)
 
 
     def build_fprop_graph(self):
@@ -99,17 +128,33 @@ class Model(LinkingCore):
 
     def build_model(self):
         print "Init Model"
+        print "Building forward graph"
         self.build_fprop_graph()
+        print "Building backward graph"
         self.build_bprop_graph()
         print "Model Done"
 
 
-    def store_links(self, links):
-        self.linksholder.store_links(links)
-
-
     @auto_add_links
     def track_var(self, var, which_set='all'):
+        if var is None or (isinstance(var, list) and None in var):
+            if policy_on_none == 'raise':
+                    raise RuntimeError(
+                        "Some variables that were asked to be tracked "+\
+                        "are None. " + gdm_decorator_errmsg)
+            elif policy_on_none != 'none':
+                if not isinstance(var, list):
+                    if policy_on_none == 'warn_fix':
+                        print "WARNING: "+\
+                            "A variable that was asked to be tracked "+\
+                            "is None. Not tracking. " + gdm_decorator_errmsg
+                    return
+                else:
+                    var = [x for x in var if x is not None]
+                    if policy_on_none == 'warn_fix':
+                        print "WARNING: "+\
+                            "Some variables that were asked to be tracked "+\
+                            "are None. Not tracking. " + gdm_decorator_errmsg
         return TrackingLink(var, which_set)
 
 
@@ -144,10 +189,10 @@ class Model(LinkingCore):
         for link in self.linksholder:
             if isinstance(link, GraphLink):
                 if graph is not None and link.graph == graph:
-                    return link.get_var_wth_name(var_name)
+                    return link.get_var_with_name(var_name)
                 else:
                     try:
-                        return link.get_var_wth_name(var_name)
+                        return link.get_var_with_name(var_name)
                     except KeyError:
                         continue
         err_msg = '' if graph is None else 'in graph ' + graph

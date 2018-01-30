@@ -17,7 +17,7 @@ class ModelRunner(LinkingCore):
         if not hasattr(self, '_streams'):
             slh = self.combine_holders().filter_linkers('StreamLink')
             sd = {}
-            if len(links) == 1:
+            if len(slh) == 1:
                 sd = {'mainloop': slh.links[0].stream}
             else:
                 for link in slh:
@@ -25,7 +25,7 @@ class ModelRunner(LinkingCore):
                        (link.name == 'mainloop' or link.name == 'train'):
                         sd.update({'mainloop': link.stream})
                     else:
-                        sd.update({link.name: slh.links.stream})
+                        sd.update({link.name: link.stream})
             self._streams = sd
             return sd
         return self._streams

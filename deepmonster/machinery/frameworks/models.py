@@ -1,16 +1,29 @@
-import theano
 from collections import OrderedDict
+
+import theano
+import blocks.algorithms
 from blocks.algorithms import GradientDescent
+
 from deepmonster.machinery.model import Model, graph_defining_method
 from deepmonster.machinery.linkers import ParametersLink
 
 class TheanoModel(Model):
+    def configure(self):
+        super(TheanoModel, self).configure()
+        self.assert_for_keys(['optimizer', 'optimizer/type', 'optimizer/learning_rate'])
+        # lets at least check we can source the optimzer before compiling graphs
+        try:
+            self.Optimizer = getattr(blocks.algorithms, self.config['optimizer/type'])
+        except AttributeError:
+            raise ImportError("Could not import {} from blocks.algorithms".format(
+                self.config['optimizer/type']))
+
+
     def build_bprop_graph(self):
         optimizer = self.get_optimizer()
-        # there are either costs assigned to specific params
-        # OR let blocks do the gradient
-        costs = self.link_here('costs').keys()
+        costs = self.link_here('costs').values()
 
+        # there are either costs assigned to specific params
         isinstance_check = [isinstance(c, ParametersLink) for c in costs]
         if any(isinstance_check):
             assert all(isinstance_check), "Some costs have parameters associated "+\
@@ -18,10 +31,13 @@ class TheanoModel(Model):
             grads = OrderedDict()
             for cost in costs:
                 grads.update(zip(cost.parameters,
-                                 theano.grad(cost.model_var, cost.params)))
+                                 theano.grad(cost.var, cost.params)))
             cost = None
+        # OR let blocks do the gradient
         else:
-            cost = sum(costs)
+            cost = costs[0]
+            for c in costs[1:]:
+                cost += c
             grads = None
 
         algorithm = GradientDescent(
@@ -33,16 +49,15 @@ class TheanoModel(Model):
 
 
     def get_optimizer(self):
-        optimizer_dict = self.config['optimizer']
-        Optimizer = optimizer_dict['type']
+        optimizer_dict = self.config['optimizer'].copy()
         lr = optimizer_dict['learning_rate']
         optimizer_param_dict = {k: optimizer_dict[k] for k \
                                 in set(optimizer_dict.keys()) - set(['type', 'learning_rate'])}
 
         if len(optimizer_param_dict.keys()) > 0:
-            optimizer = Optimizer(lr, **optimizer_param_dict)
+            optimizer = self.Optimizer(learning_rate=lr, **optimizer_param_dict)
         else:
-            optimizer = Optimizer(lr)
+            optimizer = self.Optimizer(lr)
 
         return optimizer
 

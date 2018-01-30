@@ -2,16 +2,56 @@ from dicttypes import dictify_type, frozendict, merge_dict_as_type
 from linkers import LinksHolder, LinksHelper
 from deepmonster.utils import assert_iterable_return_iterable
 
+
 class configdict(frozendict):
     """The config dictionary carried around by Core objects should be frozen, so we
     don't have unexpected behaviors and maybe help a bit when errors are thrown.
+
+    Config will typically be dict of dicts. We find ourselves always writing
+    config['x']['y']..... to finally hit our last dict and value we wanted.
+    __getitem__ is therefore modified to allow searches in a filesystem path like fashion
+    so one can write config['x/y/.../z'] to go look for that buried 'z' value.
+
+    This is especially useful for has_key.
     """
     def __getitem__(self, key):
-        # does this try/except slows down everything?
-        try:
-            return super(configdict, self).__getitem__(key)
-        except KeyError:
-            raise KeyError("Configuration query error, `{}` cannot be found.".format(key))
+        if not isinstance(key, str):
+            return dict.__getitem__(self, key)
+        keys = key.split('/')
+        v = self
+        fetched_keys = []
+        for k in keys:
+            try:
+                # we've gone too deep
+                if not isinstance(v, dict):
+                    raise KeyError
+                v = dict.__getitem__(v, k)
+            except KeyError:
+                if len(fetched_keys) == 0:
+                    raise KeyError("Config query {} not found".format(k))
+                raise KeyError(
+                    "Trying to fetch {} after successful queries {}".format(k, fetched_keys) +\
+                    " in a configuration dict.")
+            fetched_keys.append(k)
+        return v
+
+
+    def has_key(self, key):
+        if not isinstance(key, str):
+            return dict.has_key(self, key)
+        keys = key.split('/')
+        v = self
+        for i, k in enumerate(keys):
+            if not isinstance(v, dict):
+                return False
+            elif i == len(keys) - 1:
+                break
+            elif dict.has_key(v, k):
+                v = dict.__getitem__(v, k)
+                continue
+            return False
+        return dict.has_key(v, keys[-1])
+
 
 
 class Core(object):
@@ -63,6 +103,20 @@ class Core(object):
         pass
 
 
+    def assert_for_keys(self, keys):
+        """Check if config has the keys and throw an error if not.
+        It is possible to look in a hiarachy fasion if the user know that a
+        key map to a dict with other keys the user would like to check.
+
+        Ex.: self.check_for_keys(['foo'/bar']) will in effect result in a
+        call to self.config['foo'].has_key('bar')
+        """
+        keys = assert_iterable_return_iterable(keys, 'list')
+        has_keys = map(self.config.has_key, keys)
+        assert sum(has_keys) == len(keys), "Missing config keys {}".format(
+            [x for x, y in zip(keys, has_keys) if not y])
+
+
     def write_on_config(self, newitem, from_key=None):
         """See above why this method exists compared on writing directly on self.config
 
@@ -94,9 +148,8 @@ class Core(object):
         will return all pairs in dict_of_args AND ONLY the remaining ones
         in self.config which are in subset.
         """
-        new_dict = prioritydict(dict_of_args)
         subset = {k: v for k,v in self.config.iteritems() if k in config_subset} \
-                if config_subset is None else self.config
+                if config_subset is not None else self.config
         return merge_dict_as_type(dict_of_args, subset, keep_source_type=False)
 
 
@@ -119,3 +172,7 @@ class LinkingCore(Core):
 
         holders = [x.linksholder for x in cores if hasattr(x, 'linksholder')]
         return LinksHelper.merge_holders(holders)
+
+
+    def store_links(self, links):
+        self.linksholder.store_links(links)

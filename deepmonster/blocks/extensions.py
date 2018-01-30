@@ -134,8 +134,8 @@ class Experiment(LegacyExperiment):
     def __init__(self, exp_name, local_path, network_path, full_dump, **kwargs):
         self.exp_name = exp_name
         self.local_path = local_path
-        self.network_path = self.network_path
-        self.full_dump = self.full_dump
+        self.network_path = network_path
+        self.full_dump = full_dump
         # bypass LegacyExperiment init
         super(EpochExtension, self).__init__(**kwargs)
 
@@ -201,11 +201,12 @@ class FileHandlingExt(EpochExtension):
 
 class SaveExperiment(FileHandlingExt):
     def __init__(self, parameters, save_optimizer=True,
-                 original_save=False, **kwargs) :
+                 save_log=True, original_save=False, **kwargs) :
         super(SaveExperiment, self).__init__(**kwargs)
 
         self.parameters = parameters
         self.save_optimizer = save_optimizer
+        self.save_log = save_log
 
         self.original_save = original_save if original_save == False else True
         # if original_save is not False, it has to be either a list of epochs to
@@ -268,7 +269,8 @@ class SaveExperiment(FileHandlingExt):
         self._save_parameters()
         if self.save_optimizer:
             self._save_optimizer()
-        self._save_log()
+        if self.save_log:
+            self._save_log()
 
 
     def _do_full_dump(self):

@@ -22,9 +22,10 @@ class DataFetcher(LinkingCore):
     __default_splits__ = NotImplemented
 
     def configure(self):
-        super(DataFetcher, self).configure()
         if self.__knows_how_to_load__ is not NotImplemented:
-            assert self.config['name'] in self.__knows_how_to_load__
+            assert self.config['dataset'] in self.__knows_how_to_load__, \
+                    "Does not know how to load {}".format(self.config['dataset'])
+        self.fetch()
 
 
     @property
@@ -33,6 +34,8 @@ class DataFetcher(LinkingCore):
         'options' as a list of possible strings that are keywords to the loader.
         Use when the loader is a function that comes from another place in the code
         (as opposite of being a method of the class).
+
+        NOTE: We assume the function's signature is func(dataset, batch_size, **kwargs)
         """
         return NotImplemented
 
@@ -63,6 +66,7 @@ class DataFetcher(LinkingCore):
 
             Any other keys in the dict are treated as global settings
         """
+        print "Fetching DataStreams"
         # dict of streams splits to their specific options
         splits_args = {}
         if self.config.has_key('split'):
@@ -96,18 +100,25 @@ class DataFetcher(LinkingCore):
             loaded_streams = {s: self.stream_loader(s, v) for s,v in splits_args.iteritems()}
         else:
             # the loader comes from another part of the code
-            dataset = self.config['name']
+            dataset = self.config['dataset']
 
             func = self.stream_loader_info['func']
             options = self.stream_loader_info['options']
 
             kwargs = {s: self.merge_config_with_priority_args(v, options) \
-                      for s,v in self.splits_args.iteritems()}
+                      for s,v in splits_args.iteritems()}
 
             loaded_streams = {}
             for s,v in kwargs.iteritems():
                 v.pop('split', None) # it should not exist anyway but just to make sure
-                v.update({'split': assert_iterable_return_iterable(s)})
+
+                split_redirection = v.pop('split_name_redirect', None)
+                if split_redirection is not None:
+                    v_update = {'split': assert_iterable_return_iterable(split_redirection)}
+                else:
+                    v_update = {'split': assert_iterable_return_iterable(s)}
+                v.update(v_update)
+
                 try:
                     batch_size = v.pop('batch_size')
                 except KeyError:
@@ -115,10 +126,9 @@ class DataFetcher(LinkingCore):
                                    split {}".format(dataset, s))
                 loaded_streams.update({s: func(dataset, batch_size, **v)})
 
-        # all splits are loaded, store them in linkers for other Core to play with
+        # all splits are loaded, store them in linkers for other Cores to play with
         for s, datastream in loaded_streams.iteritems():
-            sl = StreamLink(datastream, name=s)
-            self.linksholder.store_link(sl)
+            self.store_links(StreamLink(datastream, name=s))
 
 
 class DefaultFetcher(DataFetcher):

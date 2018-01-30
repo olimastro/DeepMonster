@@ -34,8 +34,8 @@ class Architecture(LinkingCore):
 
     @property
     def parameters(self):
-        params = [x.parameters for x in self._internal.values() if \
-                  hasattr(x, 'parameters')]
+        params = [x.params for x in self._internal.values() if \
+                  hasattr(x, 'params')]
         return flatten(params)
 
     def add_layers_to_arch(self, layers, prefix, ff_kwargs):
