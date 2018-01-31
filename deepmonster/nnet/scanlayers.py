@@ -1,4 +1,4 @@
-import inspect, copy
+import inspect
 import numpy as np
 import theano
 import theano.tensor as T
@@ -6,14 +6,15 @@ import theano.tensor as T
 from baselayers import Layer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
+from deepmonster.utils import parse_tuple
 
 
 class ScanLayer(Layer):
     """
         General class for layers that has to deal with scan.
-        This Layer by itself cannot do any application
-        on its own. It has to be subclassed by a class that needs to implement a step
-        It works in tandem with RecurrentLayer.
+        The standard usage of this type of Layer is to work in tandem with RecurrentLayer
+        that takes care of coordinating the forward propagation and the time (scan) propagation.
+        This base class does not implement a step function for scan.
 
         In general, a subclass of ScanLayer will have to subclass ScanLayer and
         another class. The LSTM for exemple applies a dot through time, so it
@@ -23,7 +24,11 @@ class ScanLayer(Layer):
     # TODO: There is a problem with how the arguments are passed to the step function.
     # If there is another norm that requires params and you want to have it optional with
     # batch norm, having the two sets of keyword is going to crash.
-    # Workaround: make these things act like decorator?
+    # NOTE: This is a inherant limitation of scan and step and will probably never be resolved
+    def __init__(self, spatial_input_dims=None, **kwargs):
+        super(ScanLayer, self).__init__(**kwargs)
+        self.spatial_input_dims = parse_tuple(spatial_input_dims)
+
     @property
     def non_sequences(self):
         """
@@ -71,10 +76,54 @@ class ScanLayer(Layer):
         self._batch_norm_on_x = value
 
 
-    def fprop(self, *args, **kwargs):
-        # technically, it could be routed to the apply method, but this feels safer
-        raise NotImplementedError("A ScanLayer does not have an fprop method! It "+\
-                                  "is not meant to be used on its own.")
+    def fprop(self, forward_input=None, outputs_info=None,
+              batch_size=None, time_size=None, strict=True):
+        """
+            Allow using a ScanLayer outside a RecurrentLayer class (or even inside but without an
+            upward layer). There are 4 cases to handle
+            which are the combinations of (if there is a forward input and if there is a time input).
+            If there is a forward input, fprop simply pipes everything to the apply method.
+            If there is not, then it handles these cases
+        """
+        print "INFO: going through a ScanLayer fprop (bypassing RNN class fprop)"
+
+        #FIX if it ever needs other kwargs in the apply method
+        if forward_input is not None:
+            return self.apply(forward_input, outputs_info=outputs_info)
+
+        scan_kwargs = {'non_sequences': self.non_sequences,
+                       'strict': strict}
+
+        if outputs_info is None:
+            if batch_size is None:
+                raise RuntimeError("No inputs to infer batch dimension, needs a value for batch_size")
+            scan_kwargs.update({'outputs_info': self.get_outputs_info(batch_size)})
+        else:
+            # outputs_info SHOULD be a list and the batch axis HAS to be the first one
+            batch_size = outputs_info[0].shape[1]
+            scan_kwargs.update({'outputs_info': outputs_info})
+
+        if forward_input is None:
+            if time_size is None:
+                raise RuntimeError("No inputs to infer time dimension, needs a value for time_size")
+            # The step function is defined with a forward input and we cannot make it optional
+            # (and we don't want to have 1000 versions of the step function). The unfortunate
+            # solution is to pass zeros as inputs.
+            assert hasattr(self, 'spatial_input_dims'), \
+                    "Cannot use fprop of a ScanLayer without a spatial input and without defining "+\
+                    "a spatial_input_dims. This mode is only usable by passing dummy zeros of the "+\
+                    " right dimensions in order to bypass the spatial input."
+            x = T.zeros((time_size, batch_size) + self.spatial_input_dims)
+            scan_kwargs.update({'sequences': x})
+        else:
+            scan_kwargs.update({'sequences': forward_input})
+
+
+        rval, updates = theano.scan(
+            self.step,
+            **scan_kwargs)
+        out = self.after_scan(rval, updates)
+        return out
 
 
     def step(self):
@@ -89,14 +138,14 @@ class ScanLayer(Layer):
             to the step function in the list of non_sequences.
             That's mainly why this whole jibber jabber class is for.
         """
-        pass
+        return NotImplemented
 
 
     def set_scan_namespace(self, sequences, outputs_info=None, non_sequences=None):
         """
             Every theano scan has a namespace :
                 - sequences
-                - output_infos
+                - outputs_info
                 - non_sequences (this is most of the time all the shared theanovar)
         """
         if getattr(self, 'scan_namespace', None) is not None:

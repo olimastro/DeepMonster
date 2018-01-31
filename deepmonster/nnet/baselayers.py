@@ -131,7 +131,7 @@ class Layer(AbsLayer):
     """
         Layer class with initializable parameters and possible normalizations
 
-        All kwargs should be None for reasons explaned in method set_attributes.
+        All kwargs should be None for reasons explained in method set_attributes.
         Design choices exceptions: use_bias and attr_error_tolerance.
     """
     def __init__(self, attr_error_tolerance='warn', initialization=Initialization({}),
@@ -383,21 +383,24 @@ class RecurrentLayer(AbsLayer):
         A rnn can also be used in mostly two fashion. It is either fed its own
         output for the next time step or it computes a whole sequence. In case
         1), we only need one theano scan which is outside what is actually just
-        a normal FeedForwardNetwork. In case 2), every  single instance of an
+        a normal FeedForwardNetwork. In case 2), every single instance of an
         rnn needs to have its own theano scan.
 
         This class, with ScanLayer class, is intended to handle all these cases.
         NOTE: It should be possible to use a non scanlayer for the time application,
         in this  case if no step is implemented, this class will call the fprop
         of that layer.
+
+        NEW: Can now use without an upwardlayer defined.
     """
-    def __init__(self, upwardlayer, scanlayer, mode='auto', time_collapse=True):
+    def __init__(self, scanlayer, upwardlayer=None, mode='auto', time_collapse=True):
         assert mode in ['scan', 'out2in', 'auto']
         self.mode = mode
-        self.upwardlayer = upwardlayer
         self.scanlayer = scanlayer
-        self.time_collapse = False if isinstance(upwardlayer, EmptyLayer) else \
-                time_collapse
+        self.upwardlayer = EmptyLayer(scanlayer.spatial_input_dims) \
+                if upwardlayer is None else upwardlayer
+        self.time_collapse = False \
+                if isinstance(upwardlayer, EmptyLayer) else time_collapse
 
     @property
     def prefix(self):
@@ -452,7 +455,7 @@ class RecurrentLayer(AbsLayer):
         self.scanlayer.set_io_dims(self.upwardlayer.output_dims)
 
 
-    def fprop(self, x, outputs_info=None, **kwargs):
+    def fprop(self, x=None, outputs_info=None, **kwargs):
         """
             This fprop should deal with various setups. if x.ndim == 5 it is
             pretty easy, every individual fprop of the rnn should handle this
@@ -466,6 +469,11 @@ class RecurrentLayer(AbsLayer):
             which IN THE SAME ORDER should correspond
             to the reccurent state that the scanlayer.step is using.
         """
+        # NEW: allow this usage when no spatial input is given
+        if x is None or isinstance(self.upwardlayer, EmptyLayer):
+            self.scanlayer.deterministic = kwargs.pop('deterministic', False)
+            return self.scanlayer.fprop(forward_input=x, outputs_info=outputs_info, **kwargs)
+
         # logic here is that if x.ndim is 2 or 4, x is in bc or bc01
         # for 3 or 5 x is in tbc or tbc01. When t is here, you want to
         # scan on the whole thing.
@@ -494,7 +502,7 @@ class RecurrentLayer(AbsLayer):
                 # hmm maybe this can work?
                 return self.scanlayer.fprop(h)
 
-            # the outputinfo of the outside scan should contain the reccurent state
+            # the outputs_info of the outside scan should contain the reccurent state
             if outputs_info is None:
                 raise RuntimeError(
                     "There should be an outputs_info in fprop of "+self.prefix)

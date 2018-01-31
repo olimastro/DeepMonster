@@ -54,19 +54,21 @@ class LSTM(TypicalReccurentLayer):
 
         REMINDER: Take care with those * 4
     """
-    def __init__(self, output_dims, input_dims=None, upward=None, time=None, **kwargs):
+    def __init__(self, output_dims, input_dims=None, upward='default', time='default', **kwargs):
         output_dims = utils.parse_tuple(output_dims)
 
-        if upward is None:
-            upward = FullyConnectedLayer(output_dims=(output_dims[0]*4,)+output_dims[1:],
+        scan_spatial_input_dims = (output_dims[0]*4,)+output_dims[1:]
+        if upward == 'default':
+            upward = FullyConnectedLayer(output_dims=scan_spatial_input_dims,
                                          input_dims=input_dims, **kwargs)
 
         # there is no kwargs proper to a fully
         #kwargs = self.popkwargs(upward, kwargs)
-        if time is None:
-            time = ScanLSTM(output_dims=output_dims, input_dims=output_dims, **kwargs)
+        if time =='default':
+            time = ScanLSTM(output_dims=output_dims, input_dims=output_dims,
+                            spatial_input_dims=scan_spatial_input_dims, **kwargs)
 
-        super(LSTM, self).__init__(upward, time, **kwargs)
+        super(LSTM, self).__init__(time, upward, **kwargs)
 
 
 
@@ -78,7 +80,7 @@ class ConvLSTM(TypicalReccurentLayer):
     """
     def __init__(self, filter_size, num_filters,
                  time_filter_size=None, time_num_filters=None,
-                 convupward=None, convtime=None, **kwargs):
+                 convupward='conv', convtime='conv', **kwargs):
         if time_filter_size is None:
             time_filter_size = utils.parse_tuple(filter_size, 2)
         else:
@@ -90,15 +92,18 @@ class ConvLSTM(TypicalReccurentLayer):
         if time_num_filters is None:
             time_num_filters = num_filters
 
-        if convupward is None or convupward is 'conv':
-            convupward = ConvLayer(filter_size, num_filters*4, **kwargs)
-        elif convupward is 'deconv':
-            convupward = DeConvLayer(filter_size, num_filters*4, **kwargs)
+        scan_spatial_input_dims = num_filters * 4
+
+        if convupward == 'conv':
+            convupward = ConvLayer(filter_size, scan_spatial_input_dims, **kwargs)
+        elif convupward == 'deconv':
+            convupward = DeConvLayer(filter_size, scan_spatial_input_dims, **kwargs)
 
         kwargs = self.popkwargs(convupward, kwargs)
-        if convtime is None or convtime is 'conv':
-            convtime = ScanConvLSTM(time_filter_size, num_filters,
-                                    num_channels=num_filters, **kwargs)
+        if convtime == 'conv':
+            convtime = ScanConvLSTM(time_filter_size, time_num_filters,
+                                    num_channels=num_filters,
+                                    spatial_input_dims=scan_spatial_input_dims, **kwargs)
 
         super(ConvLSTM, self).__init__(convupward, convtime, **kwargs)
 
