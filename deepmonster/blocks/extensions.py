@@ -93,8 +93,8 @@ class LegacyExperiment(EpochExtension):
         if append_time:
             name += str(self.epoch)
         name += '.' + ext
-        tmp = self.local_path + 'tmp' + name
-        target = self.local_path + name
+        tmp = os.path.join(self.local_path, 'tmp' + name)
+        target = os.path.join(self.local_path, name)
 
         if ext == 'npz':
             np.savez(open(tmp, 'w'), obj)
@@ -113,7 +113,7 @@ class LegacyExperiment(EpochExtension):
             t = 0
             while t<10:
                 try:
-                    nettarget = self.network_path + name
+                    nettarget = os.path.join(self.network_path, name)
                     cmd = 'cp {} {}'.format(target, nettarget)
                     print "Doing:", cmd
                     os.system(cmd)
