@@ -67,6 +67,8 @@ class FileManager(Core):
             if self.crush_old in crush_old_cond:
                 print "WARNING: Will remove them in 5s (crush_old={})".format(self.crush_old)
                 time.sleep(6) # give time to the user to react
+                if path[-1] != '/':
+                    path += '/'
                 cmd = 'rm -r {}*'.format(path)
                 print "Doing:", cmd
                 os.system(cmd)
