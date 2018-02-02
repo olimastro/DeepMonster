@@ -22,6 +22,7 @@ class Feedforward(object):
     __protected_method = [
         '__init__',
         'params',
+        'parameters',
         'propagate',
         'fprop',
         'input_dims',
@@ -84,6 +85,11 @@ class Feedforward(object):
     @property
     def params(self):
         return find_attributes(self.layers, 'params')
+
+    # sugar syntax, but much needed sugar
+    @property
+    def parameters(self):
+        return self.params
 
     @property
     def outputs_info(self):
