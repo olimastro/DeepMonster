@@ -6,6 +6,7 @@ from blocks.algorithms import GradientDescent
 
 from deepmonster.machinery.model import Model, graph_defining_method
 from deepmonster.machinery.linkers import ParametersLink
+from deepmonster.utils import flatten
 
 class TheanoModel(Model):
     def configure(self):
@@ -22,6 +23,7 @@ class TheanoModel(Model):
     def build_bprop_graph(self):
         optimizer = self.get_optimizer()
         costs = self.link_here('costs').values()
+        import ipdb; ipdb.set_trace()
 
         # there are either costs assigned to specific params
         isinstance_check = [isinstance(c, ParametersLink) for c in costs]
@@ -29,9 +31,13 @@ class TheanoModel(Model):
             assert all(isinstance_check), "Some costs have parameters associated "+\
                     "to them and others don't. All costs need to be bound."
             grads = OrderedDict()
-            for cost in costs:
-                grads.update(zip(cost.parameters,
-                                 theano.grad(cost.var, cost.params)))
+            for paramlink in costs:
+                cost = paramlink.raw_var
+                assert len(cost) == 1
+                params = flatten([self.architecture[arch].parameters for arch in \
+                                  paramlink.architectures] + paramlink.parameters)
+                grads.update(zip(params,
+                                 theano.grad(cost[0], params)))
             cost = None
         # OR let blocks do the gradient
         else:

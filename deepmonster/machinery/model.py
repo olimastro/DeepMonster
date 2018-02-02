@@ -161,10 +161,10 @@ class Model(LinkingCore):
     @auto_add_links
     def link_var_to_graph(self, var, var_name, graph):
         var = assert_iterable_return_iterable(var)
-        var_name = assert_iterable_return_iterable(var)
+        var_name = assert_iterable_return_iterable(var_name)
         assert len(var) == len(var_name), "Unsafe linking, lengths "+\
                 "of vars to link and their corresponding string names are not the same"
-        var_name_dict = dict(zip(var, var_name))
+        var_name_dict = dict(zip(var_name, var))
 
         # first check if that GraphLink was already made
         for link in self.linksholder:

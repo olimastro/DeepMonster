@@ -73,7 +73,7 @@ class LinksHelper(object):
         linkers = LinksHelper.filter_linkers(linkers, cls)
         rval = LinksHelper.broadcast_request(linkers, request)
 
-        if cls in (TrackingLink, ModelParametersLink):
+        if cls in (TrackingLink, ModelParametersLink, AdjustSharedLink):
             return flatten(rval)
         elif cls is FunctionLink and len(rval) == 1:
             return rval[0]
@@ -252,8 +252,12 @@ class VariableLink(Linker):
     Obj is of type list
     """
     def __init__(self, var):
-        self.var = assert_iterable_return_iterable(var, 'list')
+        var = assert_iterable_return_iterable(var, 'list')
         super(VariableLink, self).__init__(var)
+
+    @property
+    def var(self):
+        return self.obj
 
     @property
     def raw_var(self):
@@ -301,13 +305,16 @@ class GraphLink(VariableLink):
 
 
 class ParametersLink(VariableLink):
-    """Indicates that this variable has these parameters linked to it.
+    """Indicates that this variable has these parameters / architectures linked to it.
 
     Obj is of type list
     """
-    def __init__(self, var, parameters=[]):
+    def __init__(self, var, parameters=None, architectures=None):
         super(ParametersLink, self).__init__(var)
-        self.parameters = assert_iterable_return_iterable(parameters)
+        parameters = [] if parameters is None else parameters
+        architectures = [] if architectures is None else architectures
+        self.parameters = assert_iterable_return_iterable(parameters, 'list')
+        self.architectures = assert_iterable_return_iterable(architectures, 'list')
 
 
 ###-------------------###
@@ -319,7 +326,8 @@ class ExtensionLink(Linker):
     linkers that are associated with each extension. This is done
     at the ExtensionsFactory script's level.
     """
-    pass
+    def parse_request(self, request=None):
+        return self.accept_request()
 
 
 class TrackingLink(VariableLink, ExtensionLink):
@@ -334,6 +342,17 @@ class TrackingLink(VariableLink, ExtensionLink):
     def parse_request(self, request):
         if 'all' in self.which_set or request in self.which_set:
             return self.accept_request(return_raw=True)
+
+
+class AdjustSharedLink(ExtensionLink):
+    """Adjust a shared variable with some rules defined in the obj
+
+    Obj is type obj with method 'adjust' that is implemented
+    """
+    def __init__(self, obj):
+        assert hasattr(obj, 'adjust'), \
+                "Incorrect object given to AdjustSharedLink. The method 'adjust' needs to exists."
+        super(AdjustSharedLink, self).__init__(obj)
 
 
 class UniquelyNamedLink(ExtensionLink):
