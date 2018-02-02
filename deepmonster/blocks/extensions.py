@@ -503,19 +503,32 @@ class FrameGen(FileHandlingExt):
 
 
 
+# try to keep old and new way of doing it
 class AdjustSharedVariable(EpochExtension):
-    def __init__(self, shared_dict, **kwargs):
+    def __init__(self, adjusts_objs, **kwargs):
         super(AdjustSharedVariable, self).__init__(**kwargs)
-        # shared_dict is a dictionnary with the following mapping :
-        # {theano.shared : f(t, x)}
-        # f(t, x) represent the new value of the shared in function of epoch and current val
-        self.shared_dict = shared_dict
+        if isinstance(adjusts_objs, dict):
+            # shared_dict is a dictionnary with the following mapping :
+            # {theano.shared : f(t, x)}
+            # f(t, x) represent the new value of the shared in function of epoch and current val
+            self.shared_dict = adjusts_objs
+        else:
+            assert isinstance(adjusts_objs, list)
+            # this is a list of objects with the 'adjust' method.
+            # the object should therefore contain everything it needs to induce changes on a shared
+            self.adjusts_objs = adjusts_objs
 
 
     def do(self, which_callback, *args) :
-        for shared, func in self.shared_dict.iteritems() :
-            current_val = shared.get_value()
-            shared.set_value(func(self.epoch, current_val))
+        # old
+        if hasattr(self, 'shared_dict'):
+            for shared, func in self.shared_dict.iteritems() :
+                current_val = shared.get_value()
+                shared.set_value(func(self.epoch, current_val))
+        # new
+        else:
+            for adj_obj in self.adjusts_objs:
+                adj_obj.adjust(self.epoch)
 
 
 ###----------------------###
