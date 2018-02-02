@@ -6,7 +6,7 @@ import theano.tensor as T
 from baselayers import Layer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
-from deepmonster.utils import parse_tuple
+from utils import parse_tuple
 
 
 class ScanLayer(Layer):
@@ -25,8 +25,7 @@ class ScanLayer(Layer):
     # If there is another norm that requires params and you want to have it optional with
     # batch norm, having the two sets of keyword is going to crash.
     # NOTE: This is a inherant limitation of scan and step and will probably never be resolved
-    def __init__(self, spatial_input_dims=None, **kwargs):
-        super(ScanLayer, self).__init__(**kwargs)
+    def __init__(self, spatial_input_dims=None):
         self.spatial_input_dims = parse_tuple(spatial_input_dims)
 
     @property
@@ -243,6 +242,10 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         LSTM implemented with the matrix being 4 times the dimensions so it can
         be sliced between the 4 gates.
     """
+    def __init__(self, **kwargs):
+        ScanLayer.__init__(self, kwargs.pop('spatial_input_dims', None))
+        FullyConnectedLayer.__init__(self, **kwargs)
+
     # small attribute reminder
     def _get_activation(self):
         return None
@@ -378,7 +381,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
 
 class ScanConvLSTM(ScanLSTM, ConvLayer):
     """
-        ConvLSTM implementation where the time dot product is changed by a
+            ConvLSTM implementation where the time dot product is changed by a
         convolution operator half padded (do not change the dimensions)
 
         Some parameters could technically not be subclassed here again, however
@@ -386,6 +389,7 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
         (such as num_filters) instead of output_dims
     """
     def __init__(self, filter_size, num_filters, **kwargs):
+        ScanLayer.__init__(self, kwargs.pop('spatial_input_dims', None))
         ConvLayer.__init__(self, filter_size, num_filters, **kwargs)
         self.padding = 'half'
         self.strides = (1,1)

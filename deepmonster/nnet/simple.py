@@ -1,7 +1,7 @@
 import numpy as np
 import theano
 import theano.tensor as T
-from baselayers import Layer, RandomLayer
+from baselayers import AbsLayer, Layer, RandomLayer
 
 
 class FullyConnectedLayer(Layer) :
@@ -36,7 +36,6 @@ class FullyConnectedLayer(Layer) :
             out = out.reshape((x.shape[0],x.shape[1],out.shape[1]))
 
         return out
-
 
 
 class FullyConnectedOnLastTime(FullyConnectedLayer):
@@ -101,34 +100,35 @@ class NoiseConditionalLayer(FullyConnectedLayer, RandomLayer):
         return noised_x
 
 
+class EmptyLayer(AbsLayer):
+    """
+        Fall through layer where nothing is changed.
+    """
+    def __init__(self, dims=None):
+        super(EmptyLayer, self).__init__(dims, dims)
 
-if __name__ == '__main__' :
-    from activations import Rectifier
-    from convolution import *
-    fl = FullyConnectedLayer(input_size=3,output_size=97,
-                             prefix='fl',weight_norm=False,
-                             batch_norm=True,gamma_scale=0.1,
-                             activation=Rectifier())
-    fl.initialize()
+    def set_io_dims(self, tup):
+        if None in self.input_dims:
+            self.input_dims = tup
+        else:
+            assert self.input_dims == tup
+        self.output_dims = tup
 
-    dtensor5 = T.TensorType('float32', (False,)*5)
-    #x = dtensor5('x')
-    theano.config.compute_test_value = 'warn'
-    x = T.ftensor4('x')
-    npx = np.random.random((50, 3, 1, 1)).astype(np.float32)
-    x.tag.test_value = npx
+    def fprop(self, x, **kwargs):
+        return x
 
-    y = fl.fprop(x)
 
-    f = theano.function([x],[y])
-    out = f(npx)
+class ZeroLayer(EmptyLayer):
+    """
+        Emits zero of the right dimensions
+    """
+    def fprop(self, x=None, shape=None, **kwargs):
+        if x is not None:
+            print "INFO: ZeroLayer blocking an input with zeros"
+        if shape is not None:
+            assert isinstance(shape, tuple)
+            dims = shape + self.output_dims
+        else:
+            dims = self.output_dims
 
-    bn_updates = [(fl.pop_mu, fl.mean)]
-    fun = theano.function([x], [], updates=bn_updates)
-    for i in range(10):
-        fun(npx)
-    fl.bn_flag.set_value(0)
-    out = f(npx)
-    fl.bn_flag.set_value(1)
-    out = f(npx)
-    import ipdb ; ipdb.set_trace()
+        return T.zeros(dims)
