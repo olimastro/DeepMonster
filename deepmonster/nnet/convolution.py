@@ -161,7 +161,7 @@ class Conv3DLayer(ConvLayer) :
         If using a stack of Conv3D it is better to only dimshuffle twice
         at the io of the stack for memory and comp usage.
     """
-    def __init__(self, filter_size, num_filters, dimshuffle_inp=False,
+    def __init__(self, filter_size, num_filters, dimshuffle_inp=True,
                  pad_time=(0,), **kwargs):
         # a bit of fooling around to use ConvLayer.__init__
         time_filter_size, filter_size = self._seperate_time_from_spatial(filter_size)
@@ -172,6 +172,11 @@ class Conv3DLayer(ConvLayer) :
         self.time_stride = time_stride
         self.dimshuffle_inp = dimshuffle_inp
         self.pad_time = utils.parse_tuple(pad_time)
+        self._gemm = False
+
+
+    def force_gemm(self):
+        self._gemm = True
 
 
     def _seperate_time_from_spatial(self, tup):
@@ -214,10 +219,16 @@ class Conv3DLayer(ConvLayer) :
     def apply(self, x):
         subsample = self.time_stride + self.strides
         border_mode = self.pad_time + self._border_mode
-        out = T.nnet.conv3d(x, self.W,
-                            border_mode=border_mode,
-                            subsample=subsample,
-                            filter_flip=False)
+
+        # sometimes optim fails to use dnn, so fallback to gemm
+        if self._gemm:
+            out = theano.gpuarray.blas.GpuCorr3dMM(
+                border_mode=border_mode, subsample=subsample)(x, self.W)
+        else:
+            out = T.nnet.conv3d(x, self.W,
+                                border_mode=border_mode,
+                                subsample=subsample,
+                                filter_flip=False)
         return out
 
 
