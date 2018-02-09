@@ -23,7 +23,6 @@ class TheanoModel(Model):
     def build_bprop_graph(self):
         optimizer = self.get_optimizer()
         costs = self.link_here('costs').values()
-        import ipdb; ipdb.set_trace()
 
         # there are either costs assigned to specific params
         isinstance_check = [isinstance(c, ParametersLink) for c in costs]
