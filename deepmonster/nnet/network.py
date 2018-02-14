@@ -213,6 +213,8 @@ class Feedforward(object):
         del self.concatenation_tags
         if output_id == 'all':
             return self.activations_list[1:]
+        elif isinstance(output_id, list):
+            return [self.activations_list[i] for i in output_id]
         else:
             return self.activations_list[output_id]
 

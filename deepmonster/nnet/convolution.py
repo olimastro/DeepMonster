@@ -3,6 +3,7 @@ import theano
 import theano.tensor as T
 import theano.tensor.nnet as nnet # for new backend
 from theano.tensor.nnet.abstract_conv import AbstractConv2d_gradInputs
+from theano.gpuarray.basic_ops import gpu_contiguous
 
 import utils
 from baselayers import Layer
@@ -223,7 +224,7 @@ class Conv3DLayer(ConvLayer) :
         # sometimes optim fails to use dnn, so fallback to gemm
         if self._gemm:
             out = theano.gpuarray.blas.GpuCorr3dMM(
-                border_mode=border_mode, subsample=subsample)(x, self.W)
+                border_mode=border_mode, subsample=subsample)(gpu_contiguous(x), gpu_contiguous(self.W))
         else:
             out = T.nnet.conv3d(x, self.W,
                                 border_mode=border_mode,
