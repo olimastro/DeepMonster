@@ -1,0 +1,38 @@
+datafetcher:
+    dataset: mnist
+    sources: (targets,features)
+    split:
+        train:
+            batch_size: 100
+        valid: 
+            batch_size: 200
+
+filemanager:
+    exp_name: test-mnist
+    local_path: $DM_OUT
+    crush_old: all
+
+runner:
+    pypath:
+        path: $DM_HOME/DeepMonster/deepmonster/testing/mnist-test/mnist-runner.py
+        name: ClassificationRunner
+    epochs: 100
+    save_freq: 25
+
+model:
+    pypath:
+        path: $DM_HOME/DeepMonster/deepmonster/testing/mnist-test/mnist-model.py
+        name: MnistClassification
+    optimizer:
+        type: Adam
+        learning_rate: 2e-4
+        beta1: 0.5
+
+architecture:
+    pypath:
+        path: $DM_HOME/DeepMonster/deepmonster/testing/mnist-test/mnist-arch.py
+        name: MnistArch
+
+config:
+    image_size: (28,28)
+    channels: 1
