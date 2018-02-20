@@ -1,10 +1,13 @@
 import numpy as np
+from deepmonster import config
 
-rng_np = np.random.RandomState(4321)
+floatX = config.floatX
+seed = config.numpy_random_seed
+rng_np = np.random.RandomState(seed)
 
 
 def norm_weight_tensor(shape):
-    return rng_np.normal(size=shape).astype('float32')
+    return rng_np.normal(size=shape).astype(floatX)
 
 
 def orthogonal_weight_tensor(shape):
@@ -16,7 +19,7 @@ def orthogonal_weight_tensor(shape):
     """
     if len(shape) == 2 :
         if shape[0] == shape[1] :
-            M = rng_np.randn(*shape).astype(np.float32)
+            M = rng_np.randn(*shape).astype(floatX)
             Q, R = np.linalg.qr(M)
             Q = Q * np.sign(np.diag(R))
             return Q
@@ -25,10 +28,10 @@ def orthogonal_weight_tensor(shape):
         if shape[i] % shape[i-1] == 0:
             print "WARNING: You asked for a orth initialization of a 2D tensor"+\
                     " which is not square, but it seems possible to make it orth by blocks"
-            weight_tensor = np.empty(shape, dtype=np.float32)
+            weight_tensor = np.empty(shape, dtype=floatX)
             blocks_of_orth = shape[i] // shape[i-1]
             for j in range(blocks_of_orth):
-                M = rng_np.randn(shape[1-i],shape[1-i]).astype(np.float32)
+                M = rng_np.randn(shape[1-i],shape[1-i]).astype(floatX)
                 Q, R = np.linalg.qr(M)
                 Q = Q * np.sign(np.diag(R))
                 if i == 0:
@@ -50,12 +53,12 @@ def orthogonal_weight_tensor(shape):
     if shape[2] == 1 :
         return norm_weight_tensor(shape)
 
-    weight_tensor = np.empty(shape, dtype=np.float32)
+    weight_tensor = np.empty(shape, dtype=floatX)
     shape_ = shape[2:]
 
     for i in range(shape[0]):
         for j in range(shape[1]) :
-            M = rng_np.randn(*shape_).astype(np.float32)
+            M = rng_np.randn(*shape_).astype(floatX)
             Q, R = np.linalg.qr(M)
             Q = Q * np.sign(np.diag(R))
             weight_tensor[i,j,:,:] = Q
@@ -64,16 +67,16 @@ def orthogonal_weight_tensor(shape):
 
 
 def ones_tensor(shape):
-    return np.ones(shape).astype(np.float32)
+    return np.ones(shape).astype(floatX)
 
 
 def zeros_tensor(shape):
-    return np.zeros(shape).astype(np.float32)
+    return np.zeros(shape).astype(floatX)
 
 
 def identity_tensor(shape):
     assert shape[0] == shape[1]
-    return np.identity(shape[0], dtype=np.float32)
+    return np.identity(shape[0], dtype=floatX)
 
 
 initialization_method = {
@@ -124,7 +127,7 @@ class Gaussian(object):
         self.std = std
 
     def __call__(self, shape):
-        return self.mu + self.std * rng_np.randn(*shape).astype(np.float32)
+        return self.mu + self.std * rng_np.randn(*shape).astype(floatX)
 
 
 class GaussianHe(object):
@@ -143,7 +146,7 @@ class ScalableInit(object):
 
 class Constant(ScalableInit):
     def __call__(self, shape):
-        return np.ones(shape).astype(np.float32) * self.scale
+        return np.ones(shape).astype(floatX) * self.scale
 
 class Orthogonal(ScalableInit):
     def __call__(self, shape):
@@ -158,7 +161,7 @@ class IdentityMatrix(ScalableInit):
         if len(shape) > 2:
             raise NotImplementedError
         assert shape[0] == shape[1]
-        matrix = np.identity(shape[0], dtype=np.float32)
+        matrix = np.identity(shape[0], dtype=floatX)
         return matrix
 
 

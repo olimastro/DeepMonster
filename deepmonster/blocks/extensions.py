@@ -6,6 +6,8 @@ from collections import OrderedDict
 from scipy.misc import imsave
 
 from blocks.extensions import SimpleExtension
+from deepmonster import config
+floatX = config.floatX
 
 class EpochExtension(SimpleExtension):
     @property
@@ -433,11 +435,11 @@ class FancyReconstruct(Reconstruct):
         for j in range(len(datastream)):
             epitr = datastream[j].get_epoch_iterator()
             shape = next(epitr)[0].shape[-3:]
-            _data = np.empty((k,nb_class,)+shape, dtype=np.float32)
+            _data = np.empty((k,nb_class,)+shape, dtype=floatX)
 
             # usefull for extra batch size above 100
             if nb_extra_data > 0:
-                extras = np.empty((nb_extra_data,) + shape, dtype=np.float32)
+                extras = np.empty((nb_extra_data,) + shape, dtype=floatX)
                 extra_id = 0
 
             cl_accumulated = np.zeros(nb_class)

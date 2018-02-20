@@ -4,12 +4,19 @@ import numpy as np
 import theano
 import theano.tensor as T
 
+from deepmonster import config
+
+def getfloatX():
+    return getattr(np, config.floatX)
+
+
 def getftensor5():
-    return T.TensorType('float32', (False,)*5)
+    floatX = theano.config.floatX
+    return T.TensorType(floatX, (False,)*5)
 
 
 def getnumpyf32(size):
-    return np.random.random(size).astype(np.float32)
+    return np.random.random(size).astype(getfloatX())
 
 
 def infer_odim_conv(i, k, s):

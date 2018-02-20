@@ -2,7 +2,8 @@ import theano
 import theano.tensor as T
 
 from baselayers import RandomLayer
-
+from deepmonster import config
+floatX = config.floatX
 
 class NonDeterministicLayer(RandomLayer):
     """
@@ -29,13 +30,13 @@ class Dropout(NonDeterministicLayer):
     def apply(self, x):
         if self.mode is 'normal' or x.ndim == 2:
             shape = x.shape
-            dropout_mask = self.rng_theano.binomial(x.shape, p=self.p, dtype='float32') / self.p
+            dropout_mask = self.rng_theano.binomial(x.shape, p=self.p, dtype=floatX) / self.p
         elif x.ndim == 4 or x.ndim == 5:
             # spatial dropout, meaning drop a whole feature map
             shape = (x.shape[x.ndim-3],)
             pattern = ('x',) * (x.ndim-3) + (0,) + ('x','x',)
 
-            dropout_feature_mask = self.rng_theano.binomial(shape, p=self.p, dtype='float32') / self.p
+            dropout_feature_mask = self.rng_theano.binomial(shape, p=self.p, dtype=floatX) / self.p
             dropout_mask = T.ones_like(x) * dropout_feature_mask.dimshuffle(*pattern) / self.p
         return x
 

@@ -6,6 +6,8 @@ import theano.tensor as T
 from theano.tensor.nnet.abstract_conv import bilinear_upsampling
 
 from baselayers import AbsLayer
+from deepmonster import config
+floatX = config.floatX
 
 
 class BilinearUpsampling(AbsLayer):
@@ -52,7 +54,7 @@ class GaussianKernelUpsampling(AbsLayer):
                              [1,4,6,4,1],
                              [4,16,26,16,4]])
         kernel = kernel[None,None,:,:] / 64.
-        self.kernel = T.as_tensor_variable(kernel.astype(np.float32))
+        self.kernel = T.as_tensor_variable(kernel.astype(floatX))
         super(GaussianKernelUpsampling, self).__init__(**kwargs)
 
     def set_io_dims(self, tup):
@@ -89,12 +91,12 @@ def gkern(kernlen=5, nsig=1):
         kern1d = np.diff(st.norm.cdf(x))
         kernel_raw = np.sqrt(np.outer(kern1d, kern1d))
         kernel = kernel_raw/kernel_raw.sum()
-        return kernel.astype(np.float32)
+        return kernel.astype(floatX)
 
 
 if __name__ == '__main__':
     from utils import getftensor5
-    npx = np.random.random((5,12,3,12,12)).astype(np.float32)
+    npx = np.random.random((5,12,3,12,12)).astype(floatX)
     ftensor5 = getftensor5()
     x = ftensor5('x')
 

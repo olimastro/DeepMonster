@@ -4,6 +4,8 @@ from fuel.streams import DataStream
 from fuel.schemes import SequentialScheme, ShuffledScheme
 from random import shuffle
 
+from deepmonster import config
+floatX = config.floatX
 
 
 class DefaultTransformer(Transformer):
@@ -76,7 +78,7 @@ class UpsampleToShape(DefaultTransformer):
 
     def crop(self, data):
         # bc01
-        new_data = np.empty(data.shape[:3] + self.outshp, dtype=np.float32)
+        new_data = np.empty(data.shape[:3] + self.outshp, dtype=floatX)
 
         x = np.random.randint(data.shape[-1]-self.outshp[0])
         y = np.random.randint(data.shape[-2]-self.outshp[1])
@@ -95,7 +97,7 @@ class UpsampleToShape(DefaultTransformer):
 
 class Float32(DefaultTransformer):
     def transform_batch(self, batch):
-        data = batch[0].astype(np.float32)
+        data = batch[0].astype(floatX)
         return [data]+list(batch[1:])
 
 
@@ -145,14 +147,14 @@ class AssertDataType(DefaultTransformer):
 
 class Normalize_min1_1(AssertDataType):
     def transform_batch(self, batch):
-        data = batch[0].astype(np.float32)
+        data = batch[0].astype(floatX)
         data = (data - 127.5) / 127.5
         return [data]+list(batch[1:])
 
 
 class Normalize_01(AssertDataType):
     def transform_batch(self, batch):
-        data = batch[0].astype(np.float32)
+        data = batch[0].astype(floatX)
         data = data / 255.
         return [data]+list(batch[1:])
 
@@ -182,7 +184,7 @@ class OpticalFlow(DefaultTransformer):
             raise TypeError("OpticalFlow wants tbc01 and got shape of {}".format(data.shape))
 
         if not 'float' in str(data.dtype):
-            data = data.astype(np.float32)
+            data = data.astype(floatX)
 
         # infer if it is 01 or -1+1 norm
         # bring it back to 255
@@ -203,8 +205,8 @@ class OpticalFlow(DefaultTransformer):
 
         if self.two_stream_format != False:
             flows = np.empty((data.shape[1], data.shape[2],
-                             data.shape[3], 2 * self.two_stream_format), dtype=np.float32)
-            new_data = np.empty(batch[0].shape[1:], dtype=np.float32)
+                             data.shape[3], 2 * self.two_stream_format), dtype=floatX)
+            new_data = np.empty(batch[0].shape[1:], dtype=floatX)
             for b in range(data.shape[1]):
                 rf_id = np.random.randint(0, data.shape[0] - self.two_stream_format)
                 new_data[b] = batch[0][rf_id,b,...]
@@ -278,9 +280,9 @@ class OpticalFlow(DefaultTransformer):
 #
 #        data, targets = self.dataset.get_data(state=None, request=indexes)
 #        if self.norm01 :
-#            data = data.astype(np.float32) / 255.
+#            data = data.astype(floatX) / 255.
 #        else:
-#            data = data.astype(np.float32)
+#            data = data.astype(floatX)
 #            data = (data - 127.5) / 127.5
 #
 #        return [data, targets]
