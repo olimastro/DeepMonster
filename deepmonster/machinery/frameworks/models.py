@@ -19,6 +19,15 @@ class TheanoModel(Model):
             raise ImportError("Could not import {} from blocks.algorithms".format(
                 self.config['optimizer/type']))
 
+        try:
+            compute_step = getattr(self.Optimizer, 'compute_step')
+            decorated_cs = compute_step_decorator(compute_step)
+            setattr(self.Optimizer, 'compute_step', decorated_cs)
+        except Exception as e:
+            print "WARNING: Error {} was thrown while trying to decorate 'compute_step' method of {}".format(
+                e, self.Optimizer) + ". This is a hack and this error will be silenced. It " +\
+                    "will prevent saving the optimizer's state."
+
 
     def build_bprop_graph(self):
         optimizer = self.get_optimizer()
@@ -28,7 +37,7 @@ class TheanoModel(Model):
         isinstance_check = [isinstance(c, ParametersLink) for c in costs]
         if any(isinstance_check):
             assert all(isinstance_check), "Some costs have parameters associated "+\
-                    "to them and others don't. All costs need to be bound."
+                    "to them and others don't. None or all costs need to be bound."
             grads = OrderedDict()
             for paramlink in costs:
                 cost = paramlink.raw_var
@@ -65,6 +74,23 @@ class TheanoModel(Model):
             optimizer = self.Optimizer(lr)
 
         return optimizer
+
+
+def compute_step_decorator(func):
+    """Decorate the blocks optimizer's compute step method so as to uniquely name
+    every optimizer updates / state.
+    """
+    def compute_step(*args, **kwargs):
+        rval = func(*args, **kwargs)
+        param = args[1]
+        updates = rval[1]
+
+        for updt in updates:
+            updt = updt[0]
+            updt.name = 'OPT_' + param.name + '_' + updt.name
+
+        return rval
+    return compute_step
 
 
 
