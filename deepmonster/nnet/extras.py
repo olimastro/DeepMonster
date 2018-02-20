@@ -113,12 +113,19 @@ class InputInjectingLayer(AbsLayer):
 
 
 class ConcatLayer(InputInjectingLayer):
-    def __init__(self, axis, *args, **kwargs):
-        self.axis = axis
+    def __init__(self, *args, **kwargs):
+        self.axis = kwargs.pop('axis', None)
         super(ConcatLayer, self).__init__(*args, **kwargs)
 
     def apply(self, x):
-        return T.concatenate([x] + self.inputs_to_inject, axis=self.axis)
+        if self.axis is None:
+            if x.ndim in [2,3]:
+                axis = x.ndim - 1
+            else:
+                axis = x.ndim - 3
+        else:
+            axis = self.axis
+        return T.concatenate([x] + self.inputs_to_inject, axis=axis)
 
 
 class SummationLayer(InputInjectingLayer):

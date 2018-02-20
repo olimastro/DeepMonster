@@ -10,7 +10,7 @@ class Activation(object):
         This class template is used for if conditions
     """
     def __call__(self):
-        pass
+        raise NotImplemented
 
 
 class LeakyRectifier(Activation) :
@@ -18,13 +18,11 @@ class LeakyRectifier(Activation) :
         self.leak = leak
 
     def __call__(self, input_) :
-        #return T.nnet.relu(input_, alpha=self.leak)
-        return T.maximum(input_, self.leak*input_)
+        return T.nnet.relu(input_, alpha=self.leak)
 
-
-class Rectifier(Activation) :
-    def __call__(self, input_) :
-        return T.nnet.relu(input_)
+class Rectifier(LeakyRectifier) :
+    def __init__(self):
+        super(Rectifier, self).__init__(0.)
 
 
 class ConvMaxout(Activation):
@@ -97,9 +95,52 @@ class Sigmoid(Activation) :
         return T.nnet.sigmoid(input_)
 
 
+class BinarySigmoid(Sigmoid):
+    def __call__(self, input_) :
+        rval = super(BinarySigmoid, self).__call__(input_)
+        mask = T.ge(rval, 0.5)
+        return mask
+
+
 class Softmax(Activation) :
     def __call__(self, input_) :
         return T.nnet.softmax(input_)
+
+
+class ChannelSoftmax(Softmax):
+    # applies softmax on the channel axis of up to a 5D tensor
+    # the channel axis is deepmonster default according to ndim
+    def __call__(self, input_):
+        if input_.ndim == 2:
+            return super(ChannelSoftmax, self).__call__(input_)
+
+        shp = [input_.shape[i] for i in range(input_.ndim)]
+        if input_.ndim in [3, 5]:
+            # collapse time on batch
+            x = input_.reshape((shp[0] * shp[1]) + tuple(shp[2:]))
+
+        if input_.ndim == 3:
+            rval = super(ChannelSoftmax, self).__call__(x)
+            # inflate
+            rval = rval.reshape(tuple(shp))
+        else:
+            # collapse 01 together
+            if input_.ndim == 4:
+                x = input_
+            x = x.reshape((x.shape[0], shp[-3], shp[-2] * shp[-1]))
+            x = x.dimshuffle(0, 2, 1)
+            # collapse 01 on batch
+            rval = x.reshape((x.shape[0] * x.shape[1], x.shape[2]))
+            rval = super(ChannelSoftmax, self).__call__(rval)
+            # inflate
+            rval = rval.reshape((x.shape[0], x.shape[1], x.shape[2]))
+            rval = rval.dimshuffle(0, 2, 1)
+            rval = rval.reshape((rval.shape[0], shp[-3], shp[-2], shp[-1]))
+
+        if input_.ndim == 5:
+            rval = rval.reshape(tuple(shp))
+
+        return rval
 
 
 class Swish(Activation):

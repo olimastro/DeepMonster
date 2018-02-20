@@ -42,7 +42,7 @@ class Dropout(NonDeterministicLayer):
 
 
 class AdditiveGaussianNoise(NonDeterministicLayer):
-    def __init__(self, std, **kwargs):
+    def __init__(self, std=1., **kwargs):
         super(AdditiveGaussianNoise, self).__init__(**kwargs)
         self.std = std
 
@@ -54,7 +54,7 @@ class AdditiveGaussianNoise(NonDeterministicLayer):
 
 
 class MultiplicativeGaussianNoise(NonDeterministicLayer):
-    def __init__(self, std, **kwargs):
+    def __init__(self, std=1., **kwargs):
         super(MultiplicativeGaussianNoise, self).__init__(**kwargs)
         self.std = std
 
@@ -62,6 +62,28 @@ class MultiplicativeGaussianNoise(NonDeterministicLayer):
     def apply(self, x):
         noise = self.rng_theano.normal(size=x.shape) * self.std
         return x * noise
+
+
+
+class ConcatenatedGaussianNoise(NonDeterministicLayer):
+    def __init__(self, channels, **kwargs):
+        super(ConcatenatedGaussianNoise, self).__init__(**kwargs)
+        self.channels = channels
+
+
+    def apply(self, x):
+        if x.ndim in [2, 3]:
+            # bc or tbc
+            i = x.ndim - 1
+        else:
+            # bc01 or tbc01
+            i = x.ndim - 3
+
+        pattern = [x.shape[j] for j in range(x.ndim)]
+        pattern[i] = self.channels
+        noise = self.rng_theano.normal(size=tuple(pattern))
+
+        return T.concatenate([x, noise], axis=i)
 
 
 
