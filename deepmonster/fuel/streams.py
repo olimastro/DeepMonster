@@ -11,52 +11,84 @@ DEFAULT_DATASET = ['mnist','cifar10','svhn','celeba']
 # NOTE: dataset can be a fuel dataset object, if it is a string it will try to fetch it
 def create_stream(dataset, batch_size, split=('train',), sources=('features',),
                   normalization='default', load_in_memory=False, test=False):
-    get_dataset = {
+    assert normalization in [None, 'default', '01','-1+1']
+    #TODO: more split
+    assert len(split) == 1, "NotImplemented more than 1 split"
+    if isinstance(dataset, str):
+        assert dataset in DEFAULT_DATASET, "Does not recognize name to fetch"
+        dataset = get_dataset(dataset, split, sources, load_in_memory)
+
+    scheme = get_scheme(split, batch_size, dataset.num_examples, test)
+    if normalization == 'default':
+        stream = DataStream.default_stream(
+            dataset=dataset,
+            iteration_scheme=scheme)
+    else:
+        stream = DataStream(
+            dataset=dataset,
+            iteration_scheme=scheme)
+        stream = normalize_stream(stream, normalization)
+    return stream
+
+
+def get_dataset(dataset, split, sources, load_in_memory):
+    get_dataset_map = {
         'mnist' : get_mnist,
         'cifar10' : get_cifar10,
         'svhn' : get_svhn,
         'celeba' : get_celeba,
     }
+    dataset = get_dataset_map[dataset](split, sources, load_in_memory)
+    return dataset
 
+
+def get_scheme(split, batch_size, num_examples, test=False):
     Scheme = {
         'train' : ShuffledScheme,
         'valid' : SequentialScheme,
         'test' : SequentialScheme,
     }
 
+    if test:
+        print "WARNING: Test flag at create_stream, loading stream with one batch_size"
+        num_examples = batch_size
+    else:
+        num_examples = (num_examples // batch_size) * batch_size
+    scheme = Scheme[split[0]](num_examples, batch_size)
+    return scheme
+
+
+def normalize_stream(stream, normalization):
+    if normalization == '-1+1':
+        stream = Normalize_min1_1(stream)
+    elif normalization == '01':
+        stream = Normalize_01(stream)
+    return stream
+
+
+def create_ssl_stream(dataset, batch_size, split=('train',), normalization='default',
+                      load_in_memory=False, test=False,
+                      nb_class=10, examples_per_class=500, examples_start=0):
+    sources = ('features', 'targets')
     assert normalization in [None, 'default', '01','-1+1']
     #TODO: more split
     assert len(split) == 1, "NotImplemented more than 1 split"
     if isinstance(dataset, str):
         assert dataset in DEFAULT_DATASET, "Does not recognize name to fetch"
-        dataset = get_dataset[dataset](split, sources, load_in_memory)
+        dataset = get_dataset(dataset, split, sources, load_in_memory)
 
-    if test:
-        print "WARNING: Test flag at create_stream, loading stream with one batch_size"
-        num_examples = batch_size
-    else:
-        num_examples = (dataset.num_examples // batch_size) * batch_size
-    scheme = Scheme[split[0]](num_examples, batch_size)
+    num_examples = nb_class * examples_per_class
 
+    scheme = get_scheme(split, batch_size, num_examples, test)
     if normalization == 'default':
-        stream = DataStream.default_stream(
-            dataset=dataset,
+        stream = SubSetStream.default_stream(
+            dataset, nb_class, examples_per_class, start=examples_start,
             iteration_scheme=scheme)
-    elif normalization == '-1+1':
-        stream = Normalize_min1_1(
-            DataStream(
-                dataset=dataset,
-                iteration_scheme=scheme))
-    elif normalization == '01':
-        stream = Normalize_01(
-            DataStream(
-                dataset=dataset,
-                iteration_scheme=scheme))
     else:
-        stream = DataStream(
-            dataset=dataset,
+        stream = SubSetStream(
+            dataset, nb_class, examples_per_class, start=examples_start,
             iteration_scheme=scheme)
-
+        stream = normalize_stream(stream, normalization)
     return stream
 
 

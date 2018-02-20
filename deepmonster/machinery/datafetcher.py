@@ -1,7 +1,11 @@
 from core import LinkingCore
+from dicttypes import dictify_type
 from linkers import StreamLink
-from deepmonster.fuel.streams import create_stream, DEFAULT_DATASET
-from deepmonster.utils import assert_iterable_return_iterable
+from deepmonster.fuel.streams import (create_stream, DEFAULT_DATASET, create_ssl_stream,
+                                     MultipleStreams)
+from deepmonster.utils import assert_iterable_return_iterable, flatten
+
+from fuel.transformers import Rename
 
 class DataFetcher(LinkingCore):
     """This class is the unfortunate layer on top of fuel which is already a layer
@@ -100,35 +104,37 @@ class DataFetcher(LinkingCore):
             loaded_streams = {s: self.stream_loader(s, v) for s,v in splits_args.iteritems()}
         else:
             # the loader comes from another part of the code
-            dataset = self.config['dataset']
-
-            func = self.stream_loader_info['func']
-            options = self.stream_loader_info['options']
-
-            kwargs = {s: self.merge_config_with_priority_args(v, options) \
-                      for s,v in splits_args.iteritems()}
-
-            loaded_streams = {}
-            for s,v in kwargs.iteritems():
-                v.pop('split', None) # it should not exist anyway but just to make sure
-
-                split_redirection = v.pop('split_name_redirect', None)
-                if split_redirection is not None:
-                    v_update = {'split': assert_iterable_return_iterable(split_redirection)}
-                else:
-                    v_update = {'split': assert_iterable_return_iterable(s)}
-                v.update(v_update)
-
-                try:
-                    batch_size = v.pop('batch_size')
-                except KeyError:
-                    raise KeyError("No batch size could be found for stream {} and \
-                                   split {}".format(dataset, s))
-                loaded_streams.update({s: func(dataset, batch_size, **v)})
+            loaded_streams = {s: self.load_stream_external_func(s, v) \
+                              for s,v in splits_args.iteritems()}
 
         # all splits are loaded, store them in linkers for other Cores to play with
         for s, datastream in loaded_streams.iteritems():
             self.store_links(StreamLink(datastream, name=s))
+
+
+    def load_stream_external_func(self, s, v):
+        dataset = self.config['dataset']
+
+        func = self.stream_loader_info['func']
+        options = self.stream_loader_info['options']
+
+        v = self.merge_config_with_priority_args(v, options)
+        v.pop('split', None) # it should not exist anyway but just to make sure
+
+        split_redirection = v.pop('split_name_redirect', None)
+        if split_redirection is not None:
+            v_update = {'split': assert_iterable_return_iterable(split_redirection)}
+        else:
+            v_update = {'split': assert_iterable_return_iterable(s)}
+        v.update(v_update)
+
+        try:
+            batch_size = v.pop('batch_size')
+        except KeyError:
+            raise KeyError("No batch size could be found for stream {} and \
+                           split {}".format(dataset, s))
+
+        return func(dataset, batch_size, **v)
 
 
 class DefaultFetcher(DataFetcher):
@@ -151,4 +157,64 @@ class DeepMonsterFetcher(DefaultFetcher):
                 'normalization',
                 'load_in_memory',
                 'test']}
+        return rval
+
+
+class SslFetcher(DefaultFetcher):
+    """Fetcher to do semisupervised learning.
+
+    It will always split one dataset split (such as train) into 2 streams, one containing
+    a subset of the original split to use for ssl, and the other with / without targets with
+    the full dataset.
+    """
+    __knows_how_to_load__ = DEFAULT_DATASET
+
+    def stream_loader(self, split, split_args):
+        if not split_args.has_key('ssl'):
+            import ipdb; ipdb.set_trace()
+            print "INFO: No ssl specified for split {}, defaulting to regular loading way".format(
+                split)
+            return self.load_stream_external_func(split, split_args)
+
+        dataset = self.config['dataset']
+        split_args = dictify_type(split_args, dict)
+
+        ssl_args = split_args.pop('ssl')
+        print_epoch_done = ssl_args.pop('print_epoch_done', False)
+
+        def popargs(args):
+            args.pop('split', None) # it should not exist anyway but just to make sure
+            try:
+                batch_size = args.pop('batch_size')
+            except KeyError:
+                raise KeyError("No batch size could be found for stream {} and \
+                               split {}".format(dataset, split))
+            return batch_size
+
+        ssl_kwargs = ['normalization', 'load_in_memory', 'test', 'nb_class',
+                      'examples_per_class', 'examples_start']
+        kwargs = ['batch_size', 'sources', 'normalization', 'load_in_memory', 'test']
+
+        ssl_args = self.merge_config_with_priority_args(ssl_args, ssl_kwargs)
+        ssl_args.update({'normalization': '01'})
+        split_args = self.merge_config_with_priority_args(split_args, kwargs)
+
+        batch_size = popargs(split_args)
+        ssl_batch_size = popargs(ssl_args)
+
+        split = assert_iterable_return_iterable(split)
+        split_args.update({'split': split})
+        ssl_args.update({'split': split})
+
+        stream = create_stream(dataset, batch_size, **split_args)
+        ssl_stream = create_ssl_stream(dataset, ssl_batch_size, **ssl_args)
+
+        name_dict = {
+            'features': 'ssl_features',
+            'targets': 'ssl_targets'}
+
+        ssl_stream = Rename(ssl_stream, name_dict)
+        streams = [stream, ssl_stream]
+        sources = flatten([s.sources for s in streams])
+        rval = MultipleStreams(streams, sources)
         return rval
