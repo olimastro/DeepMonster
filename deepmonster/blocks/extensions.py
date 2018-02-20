@@ -552,7 +552,7 @@ class Ipdb(SimpleExtension):
         # it on the fly. If action_obj is given, it will execute
         # a do method on it.
         self.action_obj = kwargs.pop('action', None)
-        kwargs.setdefault('after_batch', True)
+        #kwargs.setdefault('after_batch', True)
         super(Ipdb, self).__init__(*args, **kwargs)
 
 
