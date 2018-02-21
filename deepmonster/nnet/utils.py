@@ -12,6 +12,12 @@ def getfloatX():
 
 def getftensor5():
     floatX = theano.config.floatX
+    if floatX != 'float32':
+        print "WARNING: Calling getftensor5 but floatX is setup as {}".format(floatX)
+    return T.TensorType(floatX, (False,)*5)
+
+def gettensor5():
+    floatX = theano.config.floatX
     return T.TensorType(floatX, (False,)*5)
 
 

@@ -10,6 +10,7 @@ def norm_weight_tensor(shape):
     return rng_np.normal(size=shape).astype(floatX)
 
 
+# float16 breaks here
 def orthogonal_weight_tensor(shape):
     """
     Random orthogonal matrix as done in blocks

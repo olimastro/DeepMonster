@@ -184,7 +184,7 @@ class Layer(AbsLayer):
                     param = self.initialization.get_init_tensor(key, value[0])
                 else:
                     param = self.initialization.get_old_init_method(value[1], value[0], scaling)
-            except TypeError:
+            except TypeError as e:
                 import ipdb ; ipdb.set_trace()
                 raise TypeError("Key: "+ self.prefix+key +" caused an error in initialization")
             param = theano.shared(param, name='%s_'%self.prefix+key)
