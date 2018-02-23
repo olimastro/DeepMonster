@@ -33,7 +33,7 @@ class DataFetcher(LinkingCore):
 
 
     @property
-    def stream_loader_info(self):
+    def external_stream_loader_info(self):
         """Should return a dict with 'func' as the function to load the stream and
         'options' as a list of possible strings that are keywords to the loader.
         Use when the loader is a function that comes from another place in the code
@@ -51,6 +51,8 @@ class DataFetcher(LinkingCore):
 
         stream_only_args is a dict of specific config values for this split
         returns a fuel.Datastream
+
+        Should return a fuel.datastream
         """
         raise NotImplementedError("Base class has no loader")
 
@@ -98,12 +100,15 @@ class DataFetcher(LinkingCore):
                                for this fetcher. Aborting.")
 
         # support two ways of having a stream loader
-        if self.stream_loader_info is NotImplemented:
+        try:
             # the class should implement its stream loader as a method
             # and access everything it needs through self.config
             loaded_streams = {s: self.stream_loader(s, v) for s,v in splits_args.iteritems()}
-        else:
+        except NotImplementedError:
             # the loader comes from another part of the code
+            if self.external_stream_loader_info is NotImplemented:
+                raise NotImplementedError(
+                    "Could not found either implementation type for loading data streams")
             loaded_streams = {s: self.load_stream_external_func(s, v) \
                               for s,v in splits_args.iteritems()}
 
@@ -113,10 +118,16 @@ class DataFetcher(LinkingCore):
 
 
     def load_stream_external_func(self, s, v):
+        """Load a data stream with an imported function not defined in this class.
+        It uses external_stream_loader_info dictionnary to pipe the correct
+        arguments to the external func and returns what the func returns.
+
+        The external func should return fuel.datastreams.
+        """
         dataset = self.config['dataset']
 
-        func = self.stream_loader_info['func']
-        options = self.stream_loader_info['options']
+        func = self.external_stream_loader_info['func']
+        options = self.external_stream_loader_info['options']
 
         v = self.merge_config_with_priority_args(v, options)
         v.pop('split', None) # it should not exist anyway but just to make sure
@@ -148,7 +159,7 @@ class DeepMonsterFetcher(DefaultFetcher):
     __knows_how_to_load__ = DEFAULT_DATASET
 
     @property
-    def stream_loader_info(self):
+    def external_stream_loader_info(self):
         rval = {
             'func': create_stream,
             'options': [
@@ -160,18 +171,18 @@ class DeepMonsterFetcher(DefaultFetcher):
         return rval
 
 
-class SslFetcher(DefaultFetcher):
+class SslFetcher(DeepMonsterFetcher):
     """Fetcher to do semisupervised learning.
 
     It will always split one dataset split (such as train) into 2 streams, one containing
     a subset of the original split to use for ssl, and the other with / without targets with
     the full dataset.
     """
-    __knows_how_to_load__ = DEFAULT_DATASET
-
     def stream_loader(self, split, split_args):
+        # This is technically not respecting in the interface as it also uses imported functions.
+        # However, the final call to fuel.datastreams is defined here and the piping to the imported
+        # functions is intricate, so it is not too farfetched to use this method.
         if not split_args.has_key('ssl'):
-            import ipdb; ipdb.set_trace()
             print "INFO: No ssl specified for split {}, defaulting to regular loading way".format(
                 split)
             return self.load_stream_external_func(split, split_args)
