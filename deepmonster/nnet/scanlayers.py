@@ -3,13 +3,13 @@ import numpy as np
 import theano
 import theano.tensor as T
 
-from baselayers import Layer
+from baselayers import ParametrizedLayer
 from convolution import ConvLayer
 from simple import FullyConnectedLayer
 from utils import parse_tuple
 
 
-class ScanLayer(Layer):
+class ScanLayer(ParametrizedLayer):
     """
         General class for layers that has to deal with scan.
         The standard usage of this type of Layer is to work in tandem with RecurrentLayer
@@ -165,11 +165,7 @@ class ScanLayer(Layer):
 
 
     def before_scan(self, sequences, outputs_info=None):
-        """
-            Do before scan manipulations and populate the scan namespace.
-
-            This is basically the beginning of the fprop and receives as
-            input what is being propagated from the layer below.
+        """Do before scan manipulations and populate the scan namespace.
         """
         self.set_scan_namespace(sequences, outputs_info=outputs_info)
 
@@ -264,16 +260,17 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         super(ScanLSTM, self).attribute_error(attr_name, message)
 
 
-    def batch_norm_addparams(self):
+    def batch_norm_addparams(self, param_dict):
         # 0.1 scaling as used in RNN BN paper
-            self.param_dict.update({
-                'x_gammas' : [(4*self.output_dims[0],), 'ones', 0.1],
-                'h_gammas' : [(4*self.output_dims[0],), 'ones', 0.1],
-                'c_gammas' : [self.output_dims, 'ones', 0.1],
-                'c_betas' : [self.output_dims, 'zeros'],
-            })
+        param_dict.update({
+            'x_gammas' : [(4*self.output_dims[0],), 'ones', 0.1],
+            'h_gammas' : [(4*self.output_dims[0],), 'ones', 0.1],
+            'c_gammas' : [self.output_dims, 'ones', 0.1],
+            'c_betas' : [self.output_dims, 'zeros'],
+        })
 
 
+    @property
     def param_dict_initialization(self):
         # default 0.1 scaling on U, if higher more chances of exploding gradient
         dict_of_init = {
@@ -282,7 +279,9 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
             'h0' : [(self.output_dims[0],), 'zeros'],
             'c0' : [(self.output_dims[0],), 'zeros'],
         }
-        self.param_dict = dict_of_init
+        if self.batch_norm:
+            self.batch_norm_addparams(dict_of_init)
+        return dict_of_init
 
 
     def initialize(self):
@@ -324,7 +323,7 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         preact = self.op(h_, U)
 
         #import ipdb; ipdb.set_trace()
-        if self.batch_norm :
+        if False and self.batch_norm :
             if self.batch_norm_on_x:
                 x_normal = self.bn(x_, xh_betas, x_gammas, '_x', deterministic)
                 h_normal = self.bn(preact, 0, h_gammas, '_h', deterministic)
@@ -395,9 +394,9 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
         self.strides = (1,1)
 
 
-    def batch_norm_addparams(self):
+    def batch_norm_addparams(self, param_dict):
         # 0.1 scaling as used in RNN BN paper
-        self.param_dict.update({
+        param_dict.update({
             'x_gammas' : [(4*self.num_filters,), 'ones', 0.1],
             'h_gammas' : [(4*self.num_filters,), 'ones', 0.1],
             'c_gammas' : [(self.num_filters,), 'ones', 0.1],
@@ -405,6 +404,7 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
         })
 
 
+    @property
     def param_dict_initialization(self):
         dict_of_init = {
             'U' : [(self.num_filters*4, self.num_filters)+self.filter_size,
@@ -413,7 +413,9 @@ class ScanConvLSTM(ScanLSTM, ConvLayer):
             'h0' : [(self.num_filters,) + self.feature_size, 'zeros'],
             'c0' : [(self.num_filters,) + self.feature_size, 'zeros'],
         }
-        self.param_dict = dict_of_init
+        if self.batch_norm:
+            self.batch_norm_addparams(dict_of_init)
+        return dict_of_init
 
 
     def op(self, h, U):

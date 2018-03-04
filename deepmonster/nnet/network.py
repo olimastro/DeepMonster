@@ -1,6 +1,20 @@
-import inspect
+import copy
+from inspect import isclass
 import theano.tensor as T
 from deepmonster.utils import flatten
+from deepmonster.nnet.baselayers import AbsLayer
+from deepmonster.nnet.simple import BiasLayer
+
+
+def propagate(func):
+    """Network decorator to propagate a function call to all layers attribute of a class.
+    """
+    def propagate_func(*args, **kwargs):
+        ff = args[0]
+        for i, layer in enumerate(ff.layers):
+            new_args = tuple([args[0], i, layer] + list(args[1:]))
+            func(*new_args, **kwargs)
+    return propagate_func
 
 
 class Feedforward(object):
@@ -13,73 +27,30 @@ class Feedforward(object):
         Feedforward receives something, it will set this value to the Layer.
         If a hyperparam is None in both Layer and Feedforward and Layer needs
         it to do something, it will obviously crash.
-
-        WARNING: The __getattribute__ of this class is redefined so that the propagate
-        method is applied as a decorator to each method of the class. It can have
-        unexpected behaviors. If you want to protect a method (meaning it won't get
-        propagated), put it in the list self.protected_method.
     """
-    __protected_method = [
-        '__init__',
-        'params',
-        'parameters',
-        'propagate',
-        'fprop',
-        'input_dims',
-        'output_dims',
-        'get_outputs_info',
-        '_recurrent_warning',
-        '__repr__',
-    ]
-
     def __init__(self, layers, prefix, **kwargs):
         self.layers = layers
         self.prefix = prefix
-        #self.dict_of_hyperparam = kwargs
         self.fprop_passes = {}
 
-        set_attr = kwargs.pop('set_attr', True)
-        if set_attr :
-            self.set_attributes(kwargs)
+        no_init = kwargs.pop('no_init', False)
+        self.attr_error_tolerance = kwargs.pop('attr_error_tolerance', 'warn')
+
+        if len(kwargs) > 1:
+            self._set_attributes(kwargs)
 
         # would be useful but try to not break all the past scripts
         self._has_been_init = False
-        if not kwargs.pop('no_init', False):
-            self.set_io_dims()
+        if not no_init:
+            #self.set_io_dims()
             self.initialize()
             self._has_been_init = True
 
 
-    def __getattribute__(self, name):
-        """
-            Applies self.propagate as a decorator to unprotected method
-            in the class
-        """
-        def isprotected(name):
-            return any([f == name for f in self.__protected_method])
-
-        if name == 'initialize':
-            print "Initializing", self.prefix
-
-        attr = object.__getattribute__(self, name)
-        if hasattr(attr, '__call__') and not isprotected(name):
-            def newfunc(*args, **kwargs):
-                result = self.propagate(attr, *args, **kwargs)
-                return result
-            return newfunc
-        return attr
-
-
     def __repr__(self):
-        return self.prefix
-
-
-    def dict_of_hyperparam_default(self) :
-        """
-            Every Feedforward instance should have its own
-            default hyperparams attributes in order to work
-        """
-        pass
+        if hasattr(self, 'prefix'):
+            return self.prefix
+        return super(Feedforward, self).__repr__()
 
 
     @property
@@ -112,23 +83,17 @@ class Feedforward(object):
             self.last_msg = msg
 
 
-    def propagate(self, func, *args, **kwargs):
-        """
-            Class decorator that takes a func to apply to every layer in the Feedforward chain.
-        """
-        for i, layer in enumerate(self.layers):
-            func(i, layer, *args, **kwargs)
-
-
     # ---- THESE METHODS ARE PROPAGATED WHEN CALLED ----
     # exemple : foo = Feedforward(layers, 'foo', **fooconfig)
     #           foo.switch_for_inference()
     #           will propagate switch_for_inference to all layers
-    def set_attributes(self, i, layer, dict_of_hyperparam) :
-        layer.prefix = self.prefix + str(i)
-        layer.set_attributes(dict_of_hyperparam)
+    @propagate
+    def _set_attributes(self, i, layer, dict_of_hyperparam):
+        if hasattr(layer, '_set_attributes'):
+            layer._set_attributes(dict_of_hyperparam)
+        self.set_attributes(layer, dict_of_hyperparam)
 
-
+    @propagate
     def set_io_dims(self, i, layer, tup=None):
         if i == 0 :
             if not hasattr(layer, 'input_dims') and tup is None:
@@ -143,14 +108,31 @@ class Feedforward(object):
         layer.set_io_dims(dims)
 
 
+    @propagate
     def initialize(self, i, layer, **kwargs):
         if self._has_been_init:
             msg = self.prefix + " already have been init, supressing this init call"
             self._recurrent_warning(msg)
             return
-        layer.initialize(**kwargs)
+
+        layer.prefix = self.prefix + str(i)
+
+        tup = kwargs.pop('tup', None)
+        if i == 0 :
+            if not hasattr(layer, 'input_dims') and tup is None:
+                raise ValueError("The very first layer of this chain needs its input_dims!")
+            input_dims = getattr(layer, 'input_dims', (None,))
+            if None in input_dims:
+                dims = tup
+            else:
+                dims = input_dims
+        else:
+            dims = self.layers[i-1].output_dims
+
+        layer.initialize(dims, **kwargs)
 
 
+    @propagate
     def _fprop(self, i, layer, **kwargs):
         input_id = kwargs.pop('input_id', 0)
         if i < input_id:
@@ -170,10 +152,45 @@ class Feedforward(object):
         self.activations_list.append(y)
 
 
+    @propagate
     def _get_outputs_info(self, i, layer, *args, **kwargs):
         if hasattr(layer, 'get_outputs_info'):
             self._outputs_info += layer.get_outputs_info(*args, **kwargs)
     # ------------------------------------------------- #
+
+    def set_attributes(self, layer, dict_of_hyperparam):
+        """
+        """
+        for attr_name, attr_value in dict_of_hyperparam.iteritems() :
+            # if attr_name is set to a layer, it will keep that layer's attr_value
+            try :
+                attr = getattr(layer, attr_name)
+            except AttributeError :
+                self.attribute_error(layer, attr_name)
+                continue
+
+            if attr is None:
+                if isinstance(attr_value, AbsLayer):
+                    # make sure every layer has its own unique instance of the class
+                    # deepcopy is very important or they might share unwanted stuff
+                    # across layers (ex.: params)
+                    attr_value = copy.deepcopy(attr_value)
+                setattr(layer, attr_name, attr_value)
+
+            elif isinstance(attr, tuple):
+                # a (None,) wont trigger at the first if, but it doesn't count!
+                if attr[0] is None:
+                    setattr(layer, attr_name, utils.parse_tuple(attr_value, len(attr)))
+
+
+    def attribute_error(self, layer, attr_name, message='default'):
+        if message == 'default':
+            message = "trying to set layer "+ layer.__class__.__name__ + \
+                    " with attribute " + attr_name
+        if self.attr_error_tolerance is 'warn' :
+            print "WARNING:", message
+        elif self.attr_error_tolerance is 'raise' :
+            raise AttributeError(message)
 
 
     def fprop(self, x, output_id=-1, pass_name='', **kwargs):
@@ -223,6 +240,158 @@ class Feedforward(object):
         self._outputs_info = []
         self._get_outputs_info(*args, **kwargs)
         return self._outputs_info
+
+
+
+class StandardBlock(Feedforward):
+    """Standard blocks of Layers module. Every piece of the Layer class could technically
+    be used all seperatly, but this encapsulate the regular usage of layer i.e.:
+        y = activation(normalization(apply(W,x) + b))
+
+        - y: output
+        - x: input
+        - W: apply parameters
+        - b: bias parameters
+        - apply: some method coupling x and W together (ex.: FullyConnectedLayer: dot)
+        - normalization: normalization class instnace normalizing the output of apply
+            (ex.: BatchNorm)
+        - activation: activation class instance applying a function before the output
+            (ex.: Rectifier or ReLU)
+
+    The block interface is designed to work with Feedforward in order to initialize multiple layers
+    in a somewhat lazy way. For this it provides set_attributes method where it allows keywords not
+    given at __init__ time to be given to Feedforward so it can propagate them all and set them on
+    its list of layers. This comes with the cost that we do not know at __init__ time how to construct
+    the block. It is therefore done in construct_block method that should ideally be called after
+    __init__ and set_attributes.
+    """
+    apply_layer_type = NotImplemented
+
+    # __init__ kwargs for this block
+    kwargs = ['bias', 'apply_layer', 'activation_norm', 'activation']
+    shared_with_apply_kwargs = ['initilization', 'param_norm']
+
+    def __init__(self, *args, **kwargs):
+        # filter kwargs, after this it should contain only apply layer kwargs
+        # and return the one for this class
+        block_kwargs = self.filter_kwargs(kwargs)
+        # set this block kwargs
+        for k, v in block_kwargs.iteritems():
+            setattr(self, k, v)
+
+        self.set_apply_layer(args, kwargs)
+        self.attr_error_tolerance = kwargs.pop('attr_error_tolerance', 'warn')
+
+
+    @property
+    def block_init_kwargs(self):
+        all_kwargs = self.kwargs + self.shared_with_apply_kwargs
+        return all_kwargs
+
+
+    @property
+    def layers(self):
+        # block follow the strict layer order, apply, bias, act_norm, act
+        layers = filter(
+            lambda x: x is not None,
+            [getattr(self, x, None) for x in ['apply_layer', 'bias_layer', 'activation_norm_layer', 'activation']])
+        return layers
+
+
+    def filter_kwargs(self, kwargs):
+        """The main job of StandardBlock class is to accelerate making blocks of layers. It therefore
+        accepts multiple kwargs to influence its customization AND it needs to receive the kwargs
+        for the inner layers it wants to construct. After this filtering, only kwargs that are useful
+        for the apply layer should remain (as it is the most complicated layer in the chain).
+
+        All their default values is None to enable set_attributes method magic
+
+        ****ONE EXCEPTION --> bias is set to 'true' by default, cause.... it is the bias!
+        """
+        all_kwargs = self.block_init_kwargs
+
+        block_kwargs = {}
+        for key in all_kwargs:
+            if kwargs.has_key(key):
+                if key in self.shared_with_apply_kwargs:
+                    block_kwargs.update({key: kwargs[key]})
+                else:
+                    block_kwargs.update({key: kwargs.pop(key)})
+            elif key == 'bias':
+                block_kwargs.update({key: kwargs.get('bias', True)})
+            else:
+                block_kwargs.update({key: None})
+
+        return block_kwargs
+
+
+    def set_apply_layer(self, args, kwargs):
+        """Set the apply layer
+        """
+        if self.apply_layer is None and self.apply_layer_type is NotImplemented:
+            raise NotImplementedError("No apply layer given to construct this block")
+        if self.apply_layer is not None and self.apply_layer_type is not NotImplemented:
+            raise RuntimeError("Ambiguity while trying to construct a standard block")
+
+        # if it is, apply layer is already a right instance, does not need to do anything more
+        if not isinstance(self.apply_layer, AbsLayer):
+            if self.apply_layer is not None:
+                ApplyLayer = self.apply_layer
+            else:
+                ApplyLayer = self.apply_layer_type
+            self.apply_layer = ApplyLayer(*args, **kwargs)
+        else:
+            raise RuntimeError("Does not recognize apply layer")
+
+
+    #def set_attributes(self, layer, dict_of_hyperparam):
+    #    import ipdb; ipdb.set_trace()
+    #    # since we are catching set_attributes, self and layer are this object
+    #    # first set attributes on the whole block
+    #    super(StandardBlock, self).set_attributes(layer, dict_of_hyperparam)
+    #    # second propagate it down its own layers list
+    #    super(StandardBlock, self)._set_attributes(dict_of_hyperparam)
+
+
+    def get_layer(self, layerkey):
+        layer_opt = getattr(self, layerkey)
+        if layer_opt is None or layer_opt is False:
+            return None
+        elif isinstance(layer_opt, AbsLayer):
+            return layer_opt
+        elif layerkey == 'bias' and layer_opt is True:
+            bias_kwargs = {x: getattr(self, x, None) for x in ['initialization', 'param_norm']}
+            return BiasLayer(**bias_kwargs)
+        elif isclass(layer_opt):
+            raise TypeError(
+                "A class {} was given for layer creation in block, needs an instance".format(layer_opt))
+        raise TypeError("Does not recognize {}".format(layerkey))
+
+
+    def initialize(self, *args, **kwargs):
+        """Complete the block's initialization. ApplyLayer should already exists.
+
+        Since some layers have parameters, Initialization and ParamNorm affects all ParametrizedLayer
+        in the block.
+        """
+        # apply layer was already set
+        # set bias layer
+        if self.activation_norm is not None:
+            self.bias = False
+        self.bias_layer = self.get_layer('bias')
+        # set activation norm layer
+        self.activation_norm_layer = self.get_layer('activation_norm')
+
+        # set activation layer
+        self.activation_layer = self.activation \
+                if self.activation is not None else None
+
+        # we can now safely propagate initialize call on this block of layers
+        # this flag is for the inner layers init
+        self._has_been_init = False
+        tup = args[0]
+        kwargs.update({'tup': tup})
+        super(StandardBlock, self).initialize(**kwargs)
 
 
 

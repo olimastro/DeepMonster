@@ -80,24 +80,23 @@ def identity_tensor(shape):
     return np.identity(shape[0], dtype=floatX)
 
 
-initialization_method = {
-    'norm' : norm_weight_tensor,
-    'orth' : orthogonal_weight_tensor,
-    'ones' : ones_tensor,
-    'zeros' : zeros_tensor,
-    'identity' : identity_tensor,
-}
-
-
 class Initialization(object):
     """
         The goal of the Initialization object is to support different
         initilization scheme for different variables when constructing
         a layer object. It should support legacy way of doing it
     """
+    initialization_method = {
+        'norm' : norm_weight_tensor,
+        'orth' : orthogonal_weight_tensor,
+        'ones' : ones_tensor,
+        'zeros' : zeros_tensor,
+        'identity' : identity_tensor,
+    }
+
+
     def __init__(self, vardict):
         self.vardict = vardict
-        self.initialization_method = initialization_method
 
 
     def has_var(self, varname):
@@ -113,11 +112,12 @@ class Initialization(object):
         return self.vardict[varname](shape)
 
 
-    def get_old_init_method(self, initmethodname, shape, scale=1.):
+    @classmethod
+    def get_old_init_method(cls, initmethodname, shape, scale=1.):
         """
             Legacy / default compatibility
         """
-        return self.initialization_method[initmethodname](shape) * scale
+        return cls.initialization_method[initmethodname](shape) * scale
 
 
 ### The objects below are wrapper for one particular init method

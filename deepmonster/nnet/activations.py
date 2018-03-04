@@ -1,23 +1,22 @@
-import numpy as np
 import theano
 import theano.tensor as T
 
-class Activation(object):
-    """
-        An activation has to redifine __call__,
-        everything else is optional
+from baselayers import AbsLayer
 
-        This class template is used for if conditions
+class Activation(AbsLayer):
+    """An activation has to redifine apply, everything else is optional.
+
+    It also redirects __call__ to apply, imitating function calls as what an activation can be seen.
     """
-    def __call__(self):
-        raise NotImplemented
+    def __call__(self, x):
+        return self.apply(x)
 
 
 class LeakyRectifier(Activation) :
     def __init__(self, leak=0.1) :
         self.leak = leak
 
-    def __call__(self, input_) :
+    def apply(self, input_) :
         return T.nnet.relu(input_, alpha=self.leak)
 
 class Rectifier(LeakyRectifier) :
@@ -33,7 +32,7 @@ class ConvMaxout(Activation):
         self.num_channels_out = dims[0] // self.num_pieces
         return (self.num_channels_out,) + dims[1:]
 
-    def __call__(self, input_):
+    def apply(self, input_):
         if not hasattr(self, 'num_channels_out'):
             print "WARNING: This ConvMaxout did not have num_channels_out set before hand, inferring from the input"
             num_channels_out = input_.shape[1] // self.num_pieces
@@ -48,7 +47,7 @@ class ConvMaxout(Activation):
 
 
 class ConvMaxout5D(ConvMaxout):
-    def __call__(self, input_):
+    def apply(self, input_):
         if not hasattr(self, 'num_channels_out'):
             print "WARNING: This ConvMaxout did not have num_channels_out set before hand, inferring from the input"
             num_channels_out = input_.shape[1] // self.num_pieces
@@ -63,7 +62,7 @@ class ConvMaxout5D(ConvMaxout):
 
 
 class Tanh(Activation) :
-    def __call__(self, input_) :
+    def apply(self, input_) :
         return T.tanh(input_)
 
 
@@ -76,7 +75,7 @@ class ClipActivation(Activation) :
         self.low = low
         assert self.high > self.low
 
-    def __call__(self, input_) :
+    def apply(self, input_) :
         return T.clip(input_, self.low, self.high)
 
 class HardTanh(ClipActivation):
@@ -86,33 +85,33 @@ class HardTanh(ClipActivation):
 
 
 class Identity(Activation) :
-    def __call__(self, input_) :
+    def apply(self, input_) :
         return input_
 
 
 class Sigmoid(Activation) :
-    def __call__(self, input_) :
+    def apply(self, input_) :
         return T.nnet.sigmoid(input_)
 
 
 class BinarySigmoid(Sigmoid):
-    def __call__(self, input_) :
-        rval = super(BinarySigmoid, self).__call__(input_)
+    def apply(self, input_) :
+        rval = super(BinarySigmoid, self).apply(input_)
         mask = T.ge(rval, 0.5)
         return mask
 
 
 class Softmax(Activation) :
-    def __call__(self, input_) :
+    def apply(self, input_) :
         return T.nnet.softmax(input_)
 
 
 class ChannelSoftmax(Softmax):
     # applies softmax on the channel axis of up to a 5D tensor
     # the channel axis is deepmonster default according to ndim
-    def __call__(self, input_):
+    def apply(self, input_):
         if input_.ndim == 2:
-            return super(ChannelSoftmax, self).__call__(input_)
+            return super(ChannelSoftmax, self).apply(input_)
 
         shp = [input_.shape[i] for i in range(input_.ndim)]
         if input_.ndim in [3, 5]:
@@ -120,7 +119,7 @@ class ChannelSoftmax(Softmax):
             x = input_.reshape((shp[0] * shp[1]) + tuple(shp[2:]))
 
         if input_.ndim == 3:
-            rval = super(ChannelSoftmax, self).__call__(x)
+            rval = super(ChannelSoftmax, self).apply(x)
             # inflate
             rval = rval.reshape(tuple(shp))
         else:
@@ -131,7 +130,7 @@ class ChannelSoftmax(Softmax):
             x = x.dimshuffle(0, 2, 1)
             # collapse 01 on batch
             rval = x.reshape((x.shape[0] * x.shape[1], x.shape[2]))
-            rval = super(ChannelSoftmax, self).__call__(rval)
+            rval = super(ChannelSoftmax, self).apply(rval)
             # inflate
             rval = rval.reshape((x.shape[0], x.shape[1], x.shape[2]))
             rval = rval.dimshuffle(0, 2, 1)
@@ -144,24 +143,25 @@ class ChannelSoftmax(Softmax):
 
 
 class Swish(Activation):
-    def __call__(self, input_):
+    def apply(self, input_):
         return input_ * T.nnet.sigmoid(input_)
 
 
 class GELU(Activation):
-    def __call__(self, input_):
+    def apply(self, input_):
         return 0.5 * input_ * (1. + T.tanh(T.sqrt(2. / np.pi) * \
             (input_ + 0.044715 * input_**3)))
 
 
 class UnitNorm(Activation):
-    def __call__(self, input_):
+    def apply(self, input_):
         # normalize as a unit vector the last axis
         assert input_.ndim == 2
         return input_ / T.sqrt(T.sum(input_**2, axis=1, keepdims=True))
 
 
 if __name__ == '__main__' :
+    import numpy as np
     convmaxout = ConvMaxout(2)
     x = T.ftensor4('x')
     out = convmaxout(x)

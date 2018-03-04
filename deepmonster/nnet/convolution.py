@@ -1,27 +1,38 @@
 import numpy as np
 import theano
 import theano.tensor as T
-import theano.tensor.nnet as nnet # for new backend
 from theano.tensor.nnet.abstract_conv import AbstractConv2d_gradInputs
 from theano.gpuarray.basic_ops import gpu_contiguous
 
-import utils
-from baselayers import Layer
+from baselayers import ParametrizedLayer
+from utils import parse_tuple
 
 
-class ConvLayer(Layer) :
+class UntiedBiasLayer(ParametrizedLayer):
+    @property
+    def param_dict_initialization(self):
+        dict_of_init = {
+            'betas' : [self.output_dims, 'zeros'],
+        }
+        return dict_of_init
+
+
+    def apply(self, x):
+        pattern = ('x',) * (x.ndim - 3) + (0,1,2)
+        return x + self.betas.dimshuffle(*pattern)
+
+
+class ConvLayer(ParametrizedLayer) :
     def __init__(self, filter_size, num_filters, strides=(1,1), padding=None,
-                 tied_bias=True, image_size=None, num_channels=None,
-                 **kwargs):
+                 image_size=None, num_channels=None, **kwargs):
         super(ConvLayer, self).__init__(**kwargs)
-        image_size = utils.parse_tuple(image_size, 2)
+        image_size = parse_tuple(image_size, 2)
         self.image_size = image_size
 
-        self.tied_bias = tied_bias
         self.num_filters = num_filters
-        self.strides = utils.parse_tuple(strides, 2)
+        self.strides = parse_tuple(strides, 2)
         if isinstance(padding, int):
-            padding = utils.parse_tuple(padding, 2)
+            padding = parse_tuple(padding, 2)
         self.padding = padding
 
         self.num_channels = num_channels
@@ -30,7 +41,7 @@ class ConvLayer(Layer) :
         else:
             self.input_dims = (num_channels, image_size[0], image_size[1])
 
-        self.filter_size = utils.parse_tuple(filter_size, 2)
+        self.filter_size = parse_tuple(filter_size, 2)
 
 
     def infer_outputdim(self):
@@ -49,7 +60,7 @@ class ConvLayer(Layer) :
         else:
             raise ValueError("Does not recognize padding {} in {}".format(
                 self.padding, self.prefix))
-        self._border_mode = utils.parse_tuple(border_mode, 2)
+        self._border_mode = parse_tuple(border_mode, 2)
         o_dim = (i_dim + 2 * border_mode - k_dim) // s_dim + 1
 
         self.feature_size = (o_dim, o_dim)
@@ -66,32 +77,15 @@ class ConvLayer(Layer) :
 
 
     def convolve(self, x, W, strides, border_mode):
-        return nnet.conv2d(x, W, subsample=strides, border_mode=border_mode)
+        return T.nnet.conv2d(x, W, subsample=strides, border_mode=border_mode)
 
 
+    @property
     def param_dict_initialization(self):
-        if self.tied_bias :
-            biases_dim = (self.num_filters,)
-        else :
-            biases_dim = self.output_dims
-
         dict_of_init = {
             'W' : [(self.num_filters, self.num_channels)+self.filter_size,
                    'norm', 0.1]}
-
-        if self.use_bias or self.batch_norm :
-            dict_of_init.update({
-                'betas' : [biases_dim, 'zeros'],
-        })
-        self.param_dict = dict_of_init
-
-
-    def apply_bias(self, x):
-        if self.tied_bias:
-            return super(ConvLayer, self).apply_bias(x)
-        else:
-            pattern = ('x',) * (x.ndim - 3) + (0,1,2)
-            return x + self.betas.dimshuffle(*pattern)
+        return dict_of_init
 
 
     def apply(self, x):
@@ -164,6 +158,7 @@ class Conv3DLayer(ConvLayer) :
     """
     def __init__(self, filter_size, num_filters, dimshuffle_inp=True,
                  pad_time=(0,), **kwargs):
+        raise NotImplementedError("FIXMWE!")
         # a bit of fooling around to use ConvLayer.__init__
         time_filter_size, filter_size = self._seperate_time_from_spatial(filter_size)
         strides = kwargs.pop('strides', (1,1,1))
@@ -172,7 +167,7 @@ class Conv3DLayer(ConvLayer) :
         self.time_filter_size = time_filter_size
         self.time_stride = time_stride
         self.dimshuffle_inp = dimshuffle_inp
-        self.pad_time = utils.parse_tuple(pad_time)
+        self.pad_time = parse_tuple(pad_time)
         self._gemm = False
 
 
@@ -186,10 +181,11 @@ class Conv3DLayer(ConvLayer) :
             space = tup[1:]
         else:
             time = tup
-            space = utils.parse_tuple(tup, 2)
+            space = parse_tuple(tup, 2)
         return (time,), space
 
 
+    @property
     def param_dict_initialization(self):
         if self.tied_bias :
             biases_dim = (self.num_filters,)
@@ -205,16 +201,16 @@ class Conv3DLayer(ConvLayer) :
             dict_of_init.update({
                 'betas' : [biases_dim, 'zeros'],
         })
-        self.param_dict = dict_of_init
+        return dict_of_init
 
 
-    def apply_bias(self, x):
-        if self.tied_bias:
-            return x + self.betas.dimshuffle(
-                'x', 0, 'x', 'x', 'x')
-        else:
-            return x + self.betas.dimshuffle(
-                'x', 0, 'x', 1, 2)
+    #def apply_bias(self, x):
+    #    if self.tied_bias:
+    #        return x + self.betas.dimshuffle(
+    #            'x', 0, 'x', 'x', 'x')
+    #    else:
+    #        return x + self.betas.dimshuffle(
+    #            'x', 0, 'x', 1, 2)
 
 
     def apply(self, x):
@@ -244,9 +240,9 @@ class Conv3DLayer(ConvLayer) :
         return out
 
 
-    def bn(self, *args, **kwargs):
-        kwargs.update({'axis': (0, 2, 3, 4,)})
-        return super(Conv3DLayer, self).bn(*args, **kwargs)
+    #def bn(self, *args, **kwargs):
+    #    kwargs.update({'axis': (0, 2, 3, 4,)})
+    #    return super(Conv3DLayer, self).bn(*args, **kwargs)
 
 
 

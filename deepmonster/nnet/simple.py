@@ -1,47 +1,64 @@
 import numpy as np
 import theano
 import theano.tensor as T
-from baselayers import AbsLayer, Layer, RandomLayer
+from baselayers import AbsLayer, ParametrizedLayer, RandomLayer
 
 
-class FullyConnectedLayer(Layer) :
+class BiasLayer(ParametrizedLayer):
+    @property
+    def param_dict_initialization(self):
+        dict_of_init = {
+            'betas' : [(self.output_dims[0],), 'zeros'],
+            }
+        return dict_of_init
+
+
+    def apply(self, x):
+        pattern = ['x'] * x.ndim
+        if x.ndim in [3, 5]:
+            # tbc or tbc01
+            i = 2
+        elif x.ndim in [2, 4]:
+            # bc or bc01
+            i = 1
+        pattern[i] = 0
+        pattern = tuple(pattern)
+        return x + self.betas.dimshuffle(*pattern)
+
+
+class FullyConnectedLayer(ParametrizedLayer) :
+    @property
     def param_dict_initialization(self):
         dict_of_init = {
             'W' : [(self.input_dims[0],self.output_dims[0],), 'norm', 0.1]}
 
-        if self.use_bias or self.batch_norm:
-            dict_of_init.update({
-            'betas' : [self.output_dims[0], 'zeros'],
-            })
-
-        self.param_dict = dict_of_init
+        return dict_of_init
 
 
     def apply(self, x):
-        if x.ndim == 4:
-            # for a bc01 tensor, it will flatten 01 and do a dot
-            y = x.transpose(0,2,3,1)
-        elif x.ndim == 2:
-            y = x
-        elif x.ndim == 3:
+        #if x.ndim == 4:
+        #    # for a bc01 tensor, it will flatten 01 and do a dot
+        #    y = x.transpose(0,2,3,1)
+        if x.ndim == 3:
             # tbc, collapse t and b
             y = x.reshape((x.shape[0]*x.shape[1],x.shape[2]))
+        elif x.ndim == 2:
+            y = x
         else:
-            raise ValueError("Where are you going with these dimensions in a fullyconnected?")
+            raise ValueError("Invalid input dimensions {} in FullyConnectedLayer".format(x.ndim))
 
         out = T.dot(y, self.W)
-        if x.ndim == 4:
-            out = out.transpose(0,3,1,2)
-        elif x.ndim == 3:
+        #if x.ndim == 4:
+        #    out = out.transpose(0,3,1,2)
+        if x.ndim == 3:
             out = out.reshape((x.shape[0],x.shape[1],out.shape[1]))
 
         return out
 
 
 class FullyConnectedOnLastTime(FullyConnectedLayer):
-    """
-        Applies a fully connected layer on the last output of a 5D tensor.
-        Most likely used for the last time step.
+    """Applies a fully connected layer on the last output of a 5D tensor.
+    Most likely used for the last time step.
     """
     def apply(self, x):
         return super(FullyConnectedOnLastTime, self).apply(x[-1])
@@ -49,9 +66,8 @@ class FullyConnectedOnLastTime(FullyConnectedLayer):
 
 
 class NoiseConditionalLayer(FullyConnectedLayer, RandomLayer):
-    """
-        This class takes x and apply a linear transform on it to expend it
-        into mu, sigma and return mu + sigma * noise
+    """This class takes x and apply a linear transform on it to expend it
+    into mu, sigma and return mu + sigma * noise
     """
     def __init__(self, noise_type='gaussian', **kwargs):
         assert noise_type in ['gaussian', 'uniform']
@@ -60,6 +76,7 @@ class NoiseConditionalLayer(FullyConnectedLayer, RandomLayer):
         self.activation = None
 
 
+    @property
     def param_dict_initialization(self):
         dict_of_init = {
             'W' : [(self.input_dims[0],self.output_dims[0] * 2,), 'norm', 0.1]}
@@ -68,7 +85,8 @@ class NoiseConditionalLayer(FullyConnectedLayer, RandomLayer):
             dict_of_init.update({
             'betas' : [(self.output_dims[0] * 2,), 'zeros'],
             })
-        self.param_dict = dict_of_init
+
+        return dict_of_init
 
 
     def fprop(self, x, **kwargs):
@@ -101,8 +119,7 @@ class NoiseConditionalLayer(FullyConnectedLayer, RandomLayer):
 
 
 class EmptyLayer(AbsLayer):
-    """
-        Fall through layer where nothing is changed.
+    """Fall through layer where nothing is changed.
     """
     def __init__(self, dims=None):
         super(EmptyLayer, self).__init__(dims, dims)
@@ -119,8 +136,7 @@ class EmptyLayer(AbsLayer):
 
 
 class ZeroLayer(EmptyLayer):
-    """
-        Emits zero of the right dimensions
+    """Emits zero of the right dimensions
     """
     def fprop(self, x=None, shape=None, **kwargs):
         if x is not None:

@@ -9,7 +9,6 @@ from deepmonster import config
 def getfloatX():
     return getattr(np, config.floatX)
 
-
 def getftensor5():
     floatX = theano.config.floatX
     if floatX != 'float32':
@@ -93,34 +92,11 @@ def get_gradients_list(feedforwards, y):
     return grads
 
 
-def find_bn_params(anobject):
-    """
-        Helper function to find the batch norm params. It tries to be as helpful
-        as it can so an object can be:
-            - a layer object
-            - a list of layers
-            - a feedforward object
-            - a list of feedforward object
-            - any combination of above
-    """
-    # a feedforward is characterized by its 'layers' attribute
-    layers = []
-    if isinstance(anobject, list):
-        for x in anobject:
-            if hasattr(x, 'layers'):
-                layers += x.layers
-            else:
-                layers += x
-    elif hasattr(anobject, 'layers'):
-        layers += anobject.layers
-    else:
-        layers = [anobject]
-
-    updt = []
-    for layer in layers:
-        # RNN batch norm is a MESS
-        if hasattr(layer, '_updates'):
-            updt.extend(layer._updates)
-        elif hasattr(layer, 'bn_updates'):
-            updt.extend(layer.bn_updates)
-    return updt
+def get_dm_axis_info():
+    rval = {
+        2: tuple('bc'),
+        3: tuple('tbc'),
+        4: tuple('bc01'),
+        5: tuple('tbc01'),
+    }
+    return rval
