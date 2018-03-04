@@ -49,6 +49,7 @@ class TheanoModel(Model):
             cost = None
         # OR let blocks do the gradient
         else:
+            assert len(costs) >= 1, "No cost variables?"
             cost = costs[0]
             for c in costs[1:]:
                 cost += c
@@ -57,7 +58,8 @@ class TheanoModel(Model):
         algorithm = GradientDescent(
             cost=cost, gradients=grads,
             parameters=self.parameters,
-            step_rule=optimizer)
+            step_rule=optimizer,
+            on_unused_sources='warn')
 
         self.algorithm = algorithm
 

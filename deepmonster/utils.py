@@ -88,6 +88,14 @@ def issubclass_(C, B):
     return issubclass(C, B)
 
 
+def isstrictlysubclass(C, B):
+    if not isclass(C):
+        C = C.__class__
+    if C is B:
+        return False
+    return issubclass_(C, B)
+
+
 def merge_dicts(d1, d2):
     d = d1.copy()
     d.update(d2)

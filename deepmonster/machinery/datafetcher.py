@@ -1,6 +1,6 @@
-from core import LinkingCore
-from dicttypes import dictify_type
-from linkers import StreamLink
+from deepmonster.machinery.core import LinkingCore
+from deepmonster.machinery.dicttypes import dictify_type
+from deepmonster.machinery.linkers import StreamLink
 from deepmonster.fuel.streams import (create_stream, DEFAULT_DATASET, create_ssl_stream,
                                      MultipleStreams)
 from deepmonster.utils import assert_iterable_return_iterable, flatten
@@ -227,5 +227,5 @@ class SslFetcher(DeepMonsterFetcher):
         ssl_stream = Rename(ssl_stream, name_dict)
         streams = [stream, ssl_stream]
         sources = flatten([s.sources for s in streams])
-        rval = MultipleStreams(streams, sources)
+        rval = MultipleStreams(streams, sources, print_other_streams_epoch_done=print_epoch_done)
         return rval
