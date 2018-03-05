@@ -4,7 +4,7 @@ import theano.tensor as T
 from theano.tensor.nnet.abstract_conv import AbstractConv2d_gradInputs
 from theano.gpuarray.basic_ops import gpu_contiguous
 
-from baselayers import ParametrizedLayer
+from baselayers import AbsLayer, ParametrizedLayer
 from utils import parse_tuple
 
 
@@ -246,43 +246,15 @@ class Conv3DLayer(ConvLayer) :
 
 
 
-if __name__ == "__main__":
-    from extras import Dimshuffle
-    from network import Feedforward
-    from utils import getftensor5
+class MaxPooling(AbsLayer):
+    """Downsample by // 2 image size
+    """
+    def set_io_dims(self, tup):
+        assert len(tup) == 3, "dims should be image dims (c01)"
+        self.input_dims = tup
+        self.output_dims = (tup[0], tup[1] // 2, tup[2] // 2,)
+        assert all(i > 0 for i in tup), "downsampling below size 1"
 
-    image_size = (32,32)
-    channels = 3
-    time_size = 7
-    batch_size = 10
 
-    ftensor5 = getftensor5()
-    x = ftensor5('x')
-    npx = np.random.random(
-        (time_size, batch_size, channels,)+image_size).astype(np.float32)
-
-    layers = [
-        Dimshuffle(1,2,0,3,4),
-        Conv3DLayer(3, 16, padding='half', num_channels=channels,
-                    image_size=image_size),
-        #Conv3DLayer(3, 32, padding='half', strides=(1,2,2)),
-        #Dimshuffle(2,0,1,3,4),
-    ]
-    config = {
-        'batch_norm': True,}
-
-    net = Feedforward(layers, 'conv3d', **config)
-    net.initialize()
-
-    y = net.fprop(x)
-    cost = (y.mean() - 1.)**2
-    print theano.printing.debugprint(y)
-    import ipdb; ipdb.set_trace()
-    from collections import OrderedDict
-    grads = OrderedDict()
-    grads.update(zip(net.params,
-                     theano.grad(cost,
-                                 net.params)))
-    f = theano.function([x],[cost])
-
-    print f(npx)[0]
+    def apply(self, x):
+        return T.signal.pool.pool_2d(x, ws=(2,2), ignore_border=True)

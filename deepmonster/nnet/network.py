@@ -48,7 +48,8 @@ class Feedforward(object):
 
 
     def __repr__(self):
-        if hasattr(self, 'prefix'):
+        # printing an empty string would be quite boring
+        if hasattr(self, 'prefix') and self.prefix != '':
             return self.prefix
         return super(Feedforward, self).__repr__()
 
@@ -267,62 +268,40 @@ class StandardBlock(Feedforward):
     """
     apply_layer_type = NotImplemented
 
-    # __init__ kwargs for this block
-    kwargs = ['bias', 'apply_layer', 'activation_norm', 'activation']
-    shared_with_apply_kwargs = ['initilization', 'param_norm']
+    # special kwargs shared with its apply layer
+    shared_with_apply_kwargs = ['initialization', 'param_norm']
 
     def __init__(self, *args, **kwargs):
         # filter kwargs, after this it should contain only apply layer kwargs
         # and return the one for this class
-        block_kwargs = self.filter_kwargs(kwargs)
-        # set this block kwargs
-        for k, v in block_kwargs.iteritems():
-            setattr(self, k, v)
-
+        kwargs = self.parse_kwargs(**kwargs)
         self.set_apply_layer(args, kwargs)
-        self.attr_error_tolerance = kwargs.pop('attr_error_tolerance', 'warn')
 
 
-    @property
-    def block_init_kwargs(self):
-        all_kwargs = self.kwargs + self.shared_with_apply_kwargs
-        return all_kwargs
+    def parse_kwargs(self, bias=True, apply_layer=None, activation_norm=None,
+                     activation=None, initialization=None, param_norm=None,
+                     attr_error_tolerance='warn', apply_fetch=None, **kwargs):
+        """Because def __init__(self, *args, a_kwarg=a_default_val, **kwargs) is a python
+        syntax error, we cannot write the __init__ of StandardBlock this way. The constructor
+        of StandardBlock pipes args and kwargs for the constructor of its apply Layer. Kwargs
+        dedicated for itself are defined here and unpack while passing **kwargs to this method
+        at __init__ time.
+        """
+        for k, v in locals().iteritems():
+            if k == 'kwargs':
+                continue
+            setattr(self, k ,v)
+        kwargs.update({x: getattr(self, x) for x in self.shared_with_apply_kwargs})
+        return kwargs
 
 
     @property
     def layers(self):
-        # block follow the strict layer order, apply, bias, act_norm, act
+        # block follow the strict layer order: apply, bias, act_norm, act
         layers = filter(
             lambda x: x is not None,
             [getattr(self, x, None) for x in ['apply_layer', 'bias_layer', 'activation_norm_layer', 'activation']])
         return layers
-
-
-    def filter_kwargs(self, kwargs):
-        """The main job of StandardBlock class is to accelerate making blocks of layers. It therefore
-        accepts multiple kwargs to influence its customization AND it needs to receive the kwargs
-        for the inner layers it wants to construct. After this filtering, only kwargs that are useful
-        for the apply layer should remain (as it is the most complicated layer in the chain).
-
-        All their default values is None to enable set_attributes method magic
-
-        ****ONE EXCEPTION --> bias is set to 'true' by default, cause.... it is the bias!
-        """
-        all_kwargs = self.block_init_kwargs
-
-        block_kwargs = {}
-        for key in all_kwargs:
-            if kwargs.has_key(key):
-                if key in self.shared_with_apply_kwargs:
-                    block_kwargs.update({key: kwargs[key]})
-                else:
-                    block_kwargs.update({key: kwargs.pop(key)})
-            elif key == 'bias':
-                block_kwargs.update({key: kwargs.get('bias', True)})
-            else:
-                block_kwargs.update({key: None})
-
-        return block_kwargs
 
 
     def set_apply_layer(self, args, kwargs):
@@ -333,15 +312,22 @@ class StandardBlock(Feedforward):
         if self.apply_layer is not None and self.apply_layer_type is not NotImplemented:
             raise RuntimeError("Ambiguity while trying to construct a standard block")
 
-        # if it is, apply layer is already a right instance, does not need to do anything more
-        if not isinstance(self.apply_layer, AbsLayer):
-            if self.apply_layer is not None:
-                ApplyLayer = self.apply_layer
+        if isinstance(self.apply_layer, AbsLayer):
+            return
+        elif isinstance(self.apply_fetch, str):
+            assert isinstance(self.apply_layer_type, dict), \
+                    "Cannot fetch apply layer by string if its apply_layer_type is not implemented as a dict"
+            ApplyLayer = self.apply_layer_type[self.apply_fetch]
+        elif isclass(self.apply_layer):
+            ApplyLayer = self.apply_layer
+        elif self.apply_layer is None:
+            if isinstance(self.apply_layer_type, dict):
+                ApplyLayer = self.apply_layer_type['default']
             else:
                 ApplyLayer = self.apply_layer_type
-            self.apply_layer = ApplyLayer(*args, **kwargs)
         else:
-            raise RuntimeError("Does not recognize apply layer")
+            raise ValueError("Does not recognize apply layer")
+        self.apply_layer = ApplyLayer(*args, **kwargs)
 
 
     #def set_attributes(self, layer, dict_of_hyperparam):
@@ -363,9 +349,9 @@ class StandardBlock(Feedforward):
             bias_kwargs = {x: getattr(self, x, None) for x in ['initialization', 'param_norm']}
             return BiasLayer(**bias_kwargs)
         elif isclass(layer_opt):
-            raise TypeError(
+            raise ValueError(
                 "A class {} was given for layer creation in block, needs an instance".format(layer_opt))
-        raise TypeError("Does not recognize {}".format(layerkey))
+        raise ValueError("Does not recognize {}".format(layerkey))
 
 
     def initialize(self, *args, **kwargs):
@@ -381,10 +367,10 @@ class StandardBlock(Feedforward):
         self.bias_layer = self.get_layer('bias')
         # set activation norm layer
         self.activation_norm_layer = self.get_layer('activation_norm')
-
         # set activation layer
-        self.activation_layer = self.activation \
-                if self.activation is not None else None
+        self.activation_layer = self.get_layer('activation')
+        #self.activation_layer = self.activation \
+        #        if self.activation is not None else None
 
         # we can now safely propagate initialize call on this block of layers
         # this flag is for the inner layers init

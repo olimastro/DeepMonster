@@ -10,4 +10,6 @@ class Conv3DBlock(StandardBlock):
     apply_layer_type = Conv3DLayer
 
 class FullyConnectedBlock(StandardBlock):
-    apply_layer_type = FullyConnectedLayer
+    apply_layer_type = {
+        'default': FullyConnectedLayer,
+        'on_last_time': FullyConnectedOnLastTime}

@@ -79,12 +79,13 @@ class RecurrentLayer(AbsLayer):
         self.scanlayer.set_attributes(attributes)
 
 
-    def initialize(self):
-        self.upwardlayer.initialize()
-        self.scanlayer.initialize()
+    def initialize(self, dims):
+        self.upwardlayer.initialize(dims)
+        self.scanlayer.initialize(self.upwardlayer.output_dims)
 
 
     def set_io_dims(self, tup):
+        print "----------------> hallo? <-----------------"
         self.upwardlayer.set_io_dims(tup)
         self.scanlayer.set_io_dims(self.upwardlayer.output_dims)
 
@@ -181,6 +182,7 @@ class TypicalReccurentLayer(RecurrentLayer):
         self.upwardlayer.activation = Identity()
         if isinstance(self.upwardlayer, ZeroLayer):
             self.scanlayer.batch_norm_on_x = False
+        self.scanlayer.batch_norm = False
 
 
     def popkwargs(self, upwardlayer, kwargs):

@@ -109,13 +109,19 @@ class ActivationNormLayer(ParametrizedLayer):
         gammas = self.gammas.dimshuffle(*pattern)
 
         rval = (x - mean) * gammas / T.sqrt(std + self.eps) + betas
-        #self.tag_bn_vars(mean, 'mean' + key + self.prefix)
-        #self.tag_bn_vars(std, 'std' + key + self.prefix)
+        if hasattr(self, 'tag_norm_vars'):
+            self.tag_norm_vars(mean, 'mean')
+            self.tag_norm_vars(std, 'std')
         return rval
 
 
 class BatchNorm(ActivationNormLayer):
     str_pattern = ('b','c')
+    def tag_norm_vars(self, var, name):
+        name = self.prefix + '_' + name
+        var.name = name
+        var.tag.bn_statistic = name
+
 
 class SpatialBatchNorm(ActivationNormLayer):
     str_pattern = ('b','c','0','1')

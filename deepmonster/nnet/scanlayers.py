@@ -37,7 +37,7 @@ class ScanLayer(ParametrizedLayer):
             (such as the weight matrix) and kwargs (such as batch_norm parameters)
         """
         step_arg_list = inspect.getargspec(self.step).args
-        param_names = self.param_dict.keys()
+        param_names = self.param_dict_initialization.keys()
 
         slice_len = len(param_names)
         sublist = []
@@ -284,8 +284,8 @@ class ScanLSTM(ScanLayer, FullyConnectedLayer):
         return dict_of_init
 
 
-    def initialize(self):
-        super(ScanLSTM, self).initialize()
+    def initialize(self, dims):
+        super(ScanLSTM, self).initialize(dims)
         ### Forget gate bias init to 1
         forget_bias = self.xh_betas.get_value()
         forget_bias[self.output_dims[0]:2*self.output_dims[0]] = 1.

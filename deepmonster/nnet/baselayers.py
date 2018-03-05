@@ -10,9 +10,10 @@ class AbsLayer(object):
     """Semi-Abstract class which every layer should inherit from
     """
 
-    def __init__(self, input_dims=None, output_dims=None):
+    def __init__(self, input_dims=None, output_dims=None, prefix=''):
         self.input_dims = utils.parse_tuple(input_dims)
         self.output_dims = utils.parse_tuple(output_dims)
+        self.prefix = prefix
 
 
     def initialize(self, tup):
@@ -82,10 +83,9 @@ class ParametrizedLayer(AbsLayer):
     """Layer class with parameters as given in its param_dict_initialization property.
     """
 
-    def __init__(self, initialization=None, prefix='', param_norm=None, **kwargs):
+    def __init__(self, initialization=None, param_norm=None, **kwargs):
         self.params = []
         self.initialization = initialization
-        self.prefix = prefix
         self.param_norm = param_norm
         super(ParametrizedLayer, self).__init__(**kwargs)
 
