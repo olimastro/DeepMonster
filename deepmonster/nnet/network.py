@@ -194,40 +194,57 @@ class Feedforward(object):
             raise AttributeError(message)
 
 
-    def fprop(self, x, output_id=-1, pass_name='', **kwargs):
-        """
-            Forward propagation passes through each layer
+    #TODO: make concatenation_tags actually an input injecting mechanism through the
+    # input injecting layers, it would make it possible to use the same logic to do different
+    # input injection.
+    def fprop(self, x, output_id=-1, pass_name=None, concatenation_tags=None, **kwargs):
+        """Forward propagation passes through each self.layers
 
-            inpud_id : use this index to start the fprop at that point in the feedforward block
-            output_id : will return this index, can use 'all' for returning the whole list
-            pass_name : if defined, will update the fprop_passes dict with {pass_name : activations_list}
+        Accepted keywords:
+            - inpud_id : use this index to start the fprop at that point in the feedforward block
+            - output_id : will return this index, can use 'all' for returning the whole list
+            - pass_name : if defined, will update the fprop_passes dict with {pass_name : activations_list}.
+                The primary use is when ones want to use the same network more than once and needs to
+                store somewhere the activations being created at each fprop passes.
+            - concatenation_tags: Inject input at different stages in the fprop chain,
+            dictionnary of format:
+                - {int: (list[tensor,], int)} OR {int: list[tensor,]} OR {int: tensor}
+                - int: layer id to inject inputs with concatenation
+                - list[tensor,] OR tensor: list of tensors or tensor to inject
+                - (optionnaly) int: axis of concat.
         """
         # standarize the dict with {id of layer to inject input :
         # (list of tensors to concat, which axis)}
-        concatenation_tags = kwargs.pop('concatenation_tags', {})
-        assert all([isinstance(k, int) for k in concatenation_tags.keys()])
-        for key, val in concatenation_tags.iteritems():
-            if not isinstance(val, (list, tuple)) or len(val) == 1 or not isinstance(val[1], int):
-                val = [val, None]
-            else:
-                assert len(val) == 2
-            if not isinstance(val[0], list):
-                val = [[val[0]], val[1]]
-            assert len(set([v.ndim for v in val[0]])) == 1, "A list of tensors " +\
-                    "to concat was given but not all have same dim"
-            if val[1] is None:
-                # default on the channel axis
-                ndim = val[0][0].ndim
-                val[1] = ndim - 3 if ndim in [4, 5] else ndim - 1
-            concatenation_tags[key] = tuple(val)
+        if concatenation_tags is not None:
+            assert isinstance(concatenation_tags, dict), "concat tag needs to be a dict"
+            # we could point directly to the layers with their name?
+            assert all([isinstance(k, int) for k in concatenation_tags.keys()]),"concat dict keys need to be int"
+            for key, val in concatenation_tags.iteritems():
+                if not isinstance(val, (list, tuple)) or len(val) == 1 or not isinstance(val[1], int):
+                    val = [val, None]
+                else:
+                    assert len(val) == 2
+                if not isinstance(val[0], list):
+                    val = [[val[0]], val[1]]
+                assert len(set([v.ndim for v in val[0]])) == 1, "A list of tensors " +\
+                        "to concat was given but not all have same dim"
+                if val[1] is None:
+                    # default on the channel axis
+                    ndim = val[0][0].ndim
+                    val[1] = ndim - 3 if ndim in [4, 5] else ndim - 1
+                concatenation_tags[key] = tuple(val)
+        else:
+            concatenation_tags = {}
         self.concatenation_tags = concatenation_tags
 
         self.activations_list = [x]
         self._fprop(**kwargs)
 
-        if len(pass_name) > 0:
+        if pass_name is not None:
+            assert isinstance(pass_name, str), "pass_name needs to be a string"
             self.fprop_passes.update({pass_name : self.activations_list})
 
+        # they are useful only for a single pass and should not be kept as state variable
         del self.concatenation_tags
         if output_id == 'all':
             return self.activations_list[1:]
