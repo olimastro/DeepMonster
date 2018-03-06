@@ -123,7 +123,7 @@ class BatchNorm(ActivationNormLayer):
         var.tag.bn_statistic = name
 
 
-class SpatialBatchNorm(ActivationNormLayer):
+class SpatialBatchNorm(BatchNorm):
     str_pattern = ('b','c','0','1')
 
 class LayerNorm(ActivationNormLayer):

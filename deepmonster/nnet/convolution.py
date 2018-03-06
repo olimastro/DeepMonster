@@ -158,7 +158,6 @@ class Conv3DLayer(ConvLayer) :
     """
     def __init__(self, filter_size, num_filters, dimshuffle_inp=True,
                  pad_time=(0,), **kwargs):
-        raise NotImplementedError("FIXMWE!")
         # a bit of fooling around to use ConvLayer.__init__
         time_filter_size, filter_size = self._seperate_time_from_spatial(filter_size)
         strides = kwargs.pop('strides', (1,1,1))
@@ -187,30 +186,11 @@ class Conv3DLayer(ConvLayer) :
 
     @property
     def param_dict_initialization(self):
-        if self.tied_bias :
-            biases_dim = (self.num_filters,)
-        else :
-            biases_dim = self.output_dims
-
         dict_of_init = {
             'W' : [(self.num_filters, self.num_channels) + \
                    self.time_filter_size + self.filter_size,
                    'norm', 0.1]}
-
-        if self.use_bias or self.batch_norm :
-            dict_of_init.update({
-                'betas' : [biases_dim, 'zeros'],
-        })
         return dict_of_init
-
-
-    #def apply_bias(self, x):
-    #    if self.tied_bias:
-    #        return x + self.betas.dimshuffle(
-    #            'x', 0, 'x', 'x', 'x')
-    #    else:
-    #        return x + self.betas.dimshuffle(
-    #            'x', 0, 'x', 1, 2)
 
 
     def apply(self, x):
@@ -231,18 +211,13 @@ class Conv3DLayer(ConvLayer) :
 
     def fprop(self, x, **kwargs):
         # x incoming is in tbc01
-        # all this class assumes bct01
+        # all this class assumes theano's bct01
         if self.dimshuffle_inp:
             x = x.dimshuffle(1,2,0,3,4)
         out = super(Conv3DLayer, self).fprop(x, **kwargs)
         if self.dimshuffle_inp:
             out = out.dimshuffle(2,0,1,3,4)
         return out
-
-
-    #def bn(self, *args, **kwargs):
-    #    kwargs.update({'axis': (0, 2, 3, 4,)})
-    #    return super(Conv3DLayer, self).bn(*args, **kwargs)
 
 
 
