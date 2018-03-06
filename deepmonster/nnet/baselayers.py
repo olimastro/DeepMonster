@@ -4,6 +4,7 @@ import theano.tensor as T
 
 import utils
 from initializations import Initialization
+from parameters import ParametersNormalization
 
 
 class AbsLayer(object):
@@ -133,9 +134,10 @@ class ParametrizedLayer(AbsLayer):
             setattr(self, key, param)
             params += [param]
 
-        # for now it doesn't need to be implemented as a class since there is only this one
-        if self.param_norm == 'weight_norm':
-            weight_norm(self, self.train_g)
+        if isinstance(self.param_norm, ParametersNormalization):
+            self.param_norm.apply_on_layer(self)
+        elif self.param_norm is not None:
+            raise ValueError("Unrecognized param_norm")
 
         self.params = params
 
@@ -156,58 +158,3 @@ class ParametrizedLayer(AbsLayer):
             elif on_error == 'warn':
                 print "WARNING: Error while deleting parameter {} on {}".format(
                     param_name, self.prefix) + ", ignoring."
-
-
-def weight_norm(layer, train_g=None):
-    """
-        Applies weight norm on a layer
-        train_g None := no g at all
-        train_g False := g gets a value but is not propagated on as a param
-        train_g True := same as False but it is updated
-    """
-    assert train_g in [None, False, True]
-    init_g = Constant(1.)
-
-    try:
-        weight_tag = 'W' if hasattr(layer, 'W') else 'U'
-    except AttributeError:
-        raise AttributeError("Trying to call weight norm on {} ".format(layer)+\
-                             "without layer.W or layer.U defined")
-    weights = getattr(layer, weight_tag)
-
-    Wndim = weights.get_value().ndim
-    if Wndim == 4:
-        W_axes_to_sum = (1,2,3)
-        W_dimshuffle_args = (0,'x','x','x')
-    elif Wndim == 5:
-        W_axes_to_sum = (1,2,3,4)
-        W_dimshuffle_args = (0,'x','x','x','x')
-    # a bit sketch but serves our purpose for the LSTM weights
-    #elif weight_tag == 'U' and Wndim == 2:
-    #    W_axes_to_sum = 1
-    #    W_dimshuffle_args = (0,'x')
-    elif Wndim == 3 :
-        raise NotImplementedError("What is a weight with 3 dimensions?")
-    else :
-        W_axes_to_sum = 0
-        W_dimshuffle_args = ('x',0)
-
-    if train_g is not None:
-        g = init_g(layer.output_dims)
-        g = theano.shared(g, name=layer.prefix+'_g')
-        if train_g :
-            layer.params += [g]
-
-        new_weights = weights * (
-             g / T.sqrt(1e-6 + T.sum(T.square(weights),
-                                     axis=W_axes_to_sum))).dimshuffle(*W_dimshuffle_args)
-        layer.g = g
-    else:
-        new_weights = weights / \
-                T.sqrt(1e-6 + T.sum(T.square(weights),
-                                    axis=W_axes_to_sum,keepdims=True))
-
-    setattr(layer, weight_tag, new_weights)
-
-
-
