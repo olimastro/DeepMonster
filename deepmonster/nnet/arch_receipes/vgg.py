@@ -59,10 +59,10 @@ def make_vgg(image_size, channels, topology='16a', last_max_pool=True,
             continue
         for t in el:
             assert t % 2 == 1
-            if i == 1:
-                layers.append(ConvBlock(t, c, num_channels=channels, image_size=image_size,
-                                        padding='half'))
-                continue
+            #if i == 1:
+            #    layers.append(ConvBlock(t, c, num_channels=channels, image_size=image_size,
+            #                            padding='half'))
+            #    continue
             layers.append(ConvBlock(t, c, padding='half'))
 
         if i < len(new_topology) - 1 or last_max_pool:
@@ -70,5 +70,9 @@ def make_vgg(image_size, channels, topology='16a', last_max_pool=True,
 
     if finish_with_flatten:
         layers.append(Flatten())
+
+    # set the first layer input info
+    layers[0].layers[0].image_size=image_size
+    layers[0].layers[0].num_channels=channels
 
     return layers

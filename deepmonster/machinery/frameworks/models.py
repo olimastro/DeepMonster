@@ -2,11 +2,12 @@ from collections import OrderedDict
 
 import theano
 import blocks.algorithms
-from blocks.algorithms import GradientDescent
+from blocks.algorithms import GradientDescent, RemoveNotFinite, CompositeRule
 
 from deepmonster.machinery.model import Model, graph_defining_method
 from deepmonster.machinery.linkers import ParametersLink
 from deepmonster.utils import flatten
+from deepmonster import config as dmconfig
 
 class TheanoModel(Model):
     def configure(self):
@@ -74,6 +75,10 @@ class TheanoModel(Model):
             optimizer = self.Optimizer(learning_rate=lr, **optimizer_param_dict)
         else:
             optimizer = self.Optimizer(lr)
+
+        if dmconfig.floatX == 'float16':
+            print "WARNING: float16 makes the training unstable, inserting RemoveNotFinite in optimizer"
+            optimizer = CompositeRule([optimizer, RemoveNotFinite()])
 
         return optimizer
 

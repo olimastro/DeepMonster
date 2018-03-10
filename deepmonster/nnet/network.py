@@ -203,6 +203,7 @@ class Feedforward(object):
         Accepted keywords:
             - inpud_id : use this index to start the fprop at that point in the feedforward block
             - output_id : will return this index, can use 'all' for returning the whole list
+                ***WARNING: Index 0 is the input! The output of the first layer starts at index 1***
             - pass_name : if defined, will update the fprop_passes dict with {pass_name : activations_list}.
                 The primary use is when ones want to use the same network more than once and needs to
                 store somewhere the activations being created at each fprop passes.
@@ -247,7 +248,7 @@ class Feedforward(object):
         # they are useful only for a single pass and should not be kept as state variable
         del self.concatenation_tags
         if output_id == 'all':
-            return self.activations_list[1:]
+            return self.activations_list
         elif isinstance(output_id, list):
             return [self.activations_list[i] for i in output_id]
         else:

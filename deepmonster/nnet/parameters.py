@@ -1,8 +1,31 @@
-import theano
-import theano.tensor as T
+#from . import tensorlib as T
 from initializations import Constant
 
+from deepmonster import config
+
+import theano
+import theano.tensor as T
+
 #TODO: param class to get backend agnostic
+class Parameters(object):
+    if config.backend == 'theano':
+        import theano
+        backend_param = theano.shared(np_matrix, name=name)
+    elif config.backend == 'pytorch':
+        import torch
+        backend_param = torch.autograd.Variable(np_matrix, requires_grad=True)
+    elif config.backend == 'tensorflow':
+        raise NotImplementedError
+    else:
+        # this should really not happen, backends were checked twice already
+        import ipdb; ipdb.set_trace()
+    __backend = None
+    def __init__(self, np_matrix, name=''):
+        self.param = self.__backend()
+        self.name = name
+
+    def get_value(self):
+        pass
 
 
 class ParametersNormalization(object):

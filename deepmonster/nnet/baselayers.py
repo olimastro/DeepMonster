@@ -1,10 +1,9 @@
 import copy
-import theano
-import theano.tensor as T
 
 import utils
 from initializations import Initialization
 from parameters import ParametersNormalization
+from deepmonster import config
 
 
 class AbsLayer(object):
@@ -126,8 +125,10 @@ class ParametrizedLayer(AbsLayer):
                 else:
                     param = self.initialization.get_init_tensor(key, value[0])
             except TypeError as e:
-                import ipdb ; ipdb.set_trace()
-                raise TypeError("Key: "+ self.prefix+key +" caused an error in initialization")
+                if config.debug:
+                    import ipdb ; ipdb.set_trace()
+                raise TypeError("Key: "+ self.prefix+key +" caused an error in initialization "+\
+                                "and threw error: " + e)
 
             #FIXME for new backends!
             param = theano.shared(param, name='%s_'%self.prefix+key)

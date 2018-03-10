@@ -5,12 +5,21 @@ floatX = config.floatX
 seed = config.numpy_random_seed
 rng_np = np.random.RandomState(seed)
 
+def recast(func):
+    """Apply this decorator to a function that has to use somekind of floatX
+    value to be usable (like np.linalg) and recast back to config.floatX
+    """
+    def recast_decorator(*args, **kwargs):
+        rval = func(*args, **kwargs)
+        return rval.astype(floatX)
+    return recast_decorator
+
 
 def norm_weight_tensor(shape):
     return rng_np.normal(size=shape).astype(floatX)
 
 
-# float16 breaks here
+@recast
 def orthogonal_weight_tensor(shape):
     """
     Random orthogonal matrix as done in blocks
@@ -18,6 +27,9 @@ def orthogonal_weight_tensor(shape):
     2D: assumes a square or rectangular matrix (will make blocks of orth for rectangular)
     4D: assumes shape[-2:] is square and return orth matrices on these axis
     """
+    # these operations have to be done in float32
+    floatX = np.float32
+
     if len(shape) == 2 :
         if shape[0] == shape[1] :
             M = rng_np.randn(*shape).astype(floatX)
