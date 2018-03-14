@@ -112,7 +112,7 @@ def create_movie(movie_npz):
         j = movie_npz.shape[0] - 1
         im.save(local_dir+'temp_'+str(i*J+j+k+1)+'.png')
 
-    call(['ffmpeg', '-framerate', '5', '-i', local_dir+'temp_%d.png', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', os.environ['HOME']+'/samples.mp4'])
+    call(['ffmpeg', '-y', '-framerate', '5', '-i', local_dir+'temp_%d.png', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', os.environ['HOME']+'/samples.mp4'])
     call(['rm', '-r', local_dir])
     sys.exit()
 
@@ -142,7 +142,7 @@ if __name__ == '__main__' :
         y = y[0]
     # sketchy but it probably means it was normalized between -1 and 1
     # it will make pyplot sad if it is that way
-    if np.min(y) < -0.9 and np.min(y) > -1.1 and np.max(y) > 0.9 and np.max(y) < 1.1:
+    if np.min(y) < -0.7 and np.min(y) > -1.1 and np.max(y) > 0.7 and np.max(y) < 1.1:
         print "renormalizing from 0 to 1"
         y += 1.
         y /= 2.
