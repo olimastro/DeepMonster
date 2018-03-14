@@ -219,7 +219,8 @@ class Feedforward(object):
         if concatenation_tags is not None:
             assert isinstance(concatenation_tags, dict), "concat tag needs to be a dict"
             # we could point directly to the layers with their name?
-            assert all([isinstance(k, int) for k in concatenation_tags.keys()]),"concat dict keys need to be int"
+            assert all([isinstance(k, int) for k in concatenation_tags.keys()]), \
+                    "concat dict keys need to be int"
             for key, val in concatenation_tags.iteritems():
                 if not isinstance(val, (list, tuple)) or len(val) == 1 or not isinstance(val[1], int):
                     val = [val, None]
@@ -280,9 +281,9 @@ class StandardBlock(Feedforward):
     The block interface is designed to work with Feedforward in order to initialize multiple layers
     in a somewhat lazy way. For this it provides set_attributes method where it allows keywords not
     given at __init__ time to be given to Feedforward so it can propagate them all and set them on
-    its list of layers. This comes with the cost that we do not know at __init__ time how to construct
-    the block. It is therefore done in construct_block method that should ideally be called after
-    __init__ and set_attributes.
+    its list of layers. This comes with the cost that we do not know at __init__ time how to
+    construct the block. It is therefore done in construct_block method that should ideally
+    be called after __init__ and set_attributes.
     """
     apply_layer_type = NotImplemented
 
