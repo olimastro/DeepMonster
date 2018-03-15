@@ -181,6 +181,14 @@ class Model(LinkingCore):
                 return link.var_name_dict
 
 
+    def del_graph(self, graph):
+        sublinker = self.linksholder.filter_linkers('GraphLink')
+        gl = filter(lambda x: x.graph == graph, sublinker.links)
+        assert len(gl) == 1
+        gl = gl[0]
+        self.linksholder.links.remove(gl)
+
+
     ### ---------------------------------------------------- ###
     # these methods are, in order of complexity, methods to ease the lazy coder
     def fetch_var(self, var_name, graph=None):
